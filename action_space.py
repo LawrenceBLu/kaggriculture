@@ -25,7 +25,7 @@ list_of_all_products = ["EGG", "MILK", "WOOL", "FERTILIZER"]
 ["DIG"]
 ["PASS"]                 # 15th
 """
-def farmhand_action_space(_farmhands = global_vars.MAX_FARMHAND_HIRES):    
+def farmhand_action_space():    
     actions = {}
     ct = 0
     directions = ["NORTH", "SOUTH", "EAST", "WEST"]
@@ -48,8 +48,9 @@ def farmhand_action_space(_farmhands = global_vars.MAX_FARMHAND_HIRES):
     for i in range(len(remaining)):
         actions[remaining[i]] = ct     
         ct += 1
-         
-    return actions, ct
+        
+    reversed_dict = {value: key for key, value in actions.items()}
+    return reversed_dict
 
 # MARKET ACTIONS
 """ 
@@ -63,28 +64,32 @@ def farmhand_action_space(_farmhands = global_vars.MAX_FARMHAND_HIRES):
 
 def market_action_space():
     actions = {}
+    list_all_actions = []
     ct = 0
     for i in range(5):
-        for a in range(global_vars.MAX_NUM_BUY_SEED):
+        for a in range(0, global_vars.MAX_NUM_BUY_SEED, 5):
             actions[tuple(("BUY_SEED", list_of_all_crops[i], a+1))] = ct
             ct += 1
     
     for i in range(4):
-        for a in range(global_vars.MAX_NUM_BUY_PRODUCT):
+        for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, 3):
             actions[tuple(("BUY_PRODUCT", list_of_all_products[i], a+1))] = ct
             ct += 1
             
     for i in range(3):
-        for a in range(global_vars.MAX_NUM_BUY_ANIMAL):
+        for a in range(0, global_vars.MAX_NUM_BUY_ANIMAL, 2):
             actions[tuple(("BUY_ANIMAL", list_of_all_animals[i], a+1))] = ct
             ct += 1
             
     for i in range(5):
-        for a in range(global_vars.MAX_NUM_SELL):
+        for a in range(0, global_vars.MAX_NUM_SELL, 5):
             actions[tuple(("SELL", list_of_all_pickupable_resources[i], a+1))] = ct
             ct += 1
     
     actions['HIRE'] = ct 
     ct += 1
     actions['BUY_LAND'] = ct
-    return actions
+    actions["PASS"] = ct
+    
+    reversed_dict = {value: key for key, value in actions.items()}
+    return reversed_dict
