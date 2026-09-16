@@ -5,6 +5,8 @@ import torch.nn as nn
 from torch.distributions import Categorical
 import torch.nn.functional as F
 
+#heehee
+
 class CNN(nn.Module):
     def __init__(self, input_channels, output_len):
         super().__init__()
