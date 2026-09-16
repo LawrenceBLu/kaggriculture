@@ -1,5 +1,11 @@
 import global_vars
 import numpy as np
+
+list_of_all_pickupable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
+list_of_all_placeable_resources = ["WHEAT","CARROT","TOMATO","STRAWBERRY","MELON","GOOSE", "COW", "SHEEP"]
+list_of_all_crops = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
+list_of_all_animals = ['GOOSE', 'COW', 'SHEEP']
+list_of_all_products = ["EGG", "MILK", "WOOL", "FERTILIZER"]
 #
 # FARM ACTIONS
 """ 
@@ -19,16 +25,31 @@ import numpy as np
 ["DIG"]
 ["PASS"]                 # 15th
 """
+def farmhand_action_space(_farmhands = global_vars.MAX_FARMHAND_HIRES):    
+    actions = {}
+    ct = 0
+    directions = ["NORTH", "SOUTH", "EAST", "WEST"]
+    for i in range(4):
+        actions[directions[i]] = ct
+        ct += 1
+    
+    for i in range(9):
+        for a in range(global_vars.MAX_ITEMS_PICKUP):
+            t = tuple(('PICKUP', list_of_all_pickupable_resources[i], a+1))
+            actions[t] = ct
+            ct += 1
 
-num_market_actions = 6
-def farmhand_action_space():    
-    actions = []
-    actions.extend(np.arange(0,4))
-    actions.extend([[4] + [n, y] for n in range(9) for y in range(global_vars.MAX_ITEMS_PICKUP)])
-    actions.extend([[5] + [n] for n in range(8)])
-    actions.extend(np.arange(6, 15))
-    return actions
-
+    for i in range(8):
+        t = tuple(('PLACE', list_of_all_placeable_resources[i]))
+        actions[t] = ct
+        ct += 1
+    
+    remaining = ["HARVEST", "FERTILIZE","BUILD_COOP","BUILD_PASTURE","FEED","COLLECT_FERTILIZER","CARE","DIG","PASS"]
+    for i in range(len(remaining)):
+        actions[remaining[i]] = ct     
+        ct += 1
+         
+    return actions, ct
 
 # MARKET ACTIONS
 """ 
@@ -41,12 +62,29 @@ def farmhand_action_space():
  """
 
 def market_action_space():
-    actions = []
-    actions.extend([[15] + [n, y] for n in range(5) for y in range(global_vars.MAX_NUM_BUY_SEED)])
-    actions.extend([[16] + [n, y] for n in range(4) for y in range(global_vars.MAX_NUM_BUY_PRODUCT)])
-    actions.extend([[17] + [n, y] for n in range(3) for y in range(global_vars.MAX_NUM_BUY_ANIMAL)])
-    actions.extend([[18] + [n, y] for n in range(9) for y in range(global_vars.MAX_NUM_SELL)])
-    actions.extend([19] + [n] for n in range(global_vars.MAX_HIRE_FARMHANDS_PER_TURN))
-    actions.extend([20])
+    actions = {}
+    ct = 0
+    for i in range(5):
+        for a in range(global_vars.MAX_NUM_BUY_SEED):
+            actions[tuple(("BUY_SEED", list_of_all_crops[i], a+1))] = ct
+            ct += 1
     
+    for i in range(4):
+        for a in range(global_vars.MAX_NUM_BUY_PRODUCT):
+            actions[tuple(("BUY_PRODUCT", list_of_all_products[i], a+1))] = ct
+            ct += 1
+            
+    for i in range(3):
+        for a in range(global_vars.MAX_NUM_BUY_ANIMAL):
+            actions[tuple(("BUY_ANIMAL", list_of_all_animals[i], a+1))] = ct
+            ct += 1
+            
+    for i in range(5):
+        for a in range(global_vars.MAX_NUM_SELL):
+            actions[tuple(("SELL", list_of_all_pickupable_resources[i], a+1))] = ct
+            ct += 1
+    
+    actions['HIRE'] = ct 
+    ct += 1
+    actions['BUY_LAND'] = ct
     return actions
