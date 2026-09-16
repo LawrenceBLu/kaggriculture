@@ -1,45 +1,42 @@
-import gymnasium as gym
+from kaggle_environments import make
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
+from ppo import PPO
 
 def run():
-  env = gym.make("CartPole-v1", render_mode="rgb_array")
-  input_len = env.observation_space.shape[0]
-  action_dim = int(env.action_space.n)
-  hidden_len = 32
-  actor_lr = 5e-4
-  critic_lr = 1e-4
-  value_c = 0.5
-  entr_c = 0.01
+  env = make("kaggriculture", debug=True)
+
+  grid_size = None
+  cnn_dim = 128
+  non_tile_len = None
+  linear_dim = 128
+  lstm_dim = 256
+  lstm_layers = 1
+  action_dim = None
+  lr = 1e-4
   eps = 0.2
   epochs = 2
+  value_c = 0.5
+  entr_c = 0.01
+  gae_lambda = 0.99
+  gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-  ppo = PPO(input_len, action_dim, hidden_len, actor_lr, critic_lr, eps, epochs, value_c, entr_c, device)
+  
+  ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, value_c, entr_c, gae_lambda, gamma, device)
 
-  episodes = 0
-  max_episodes = 1000
-  rewards = []
+  max_steps = 1000
+  num_iterations = 2
 
-  for _ in range(max_episodes):
-    state, info = env.reset()
-    curr_reward = 0
 
-    while True:
-      action = ppo.get_action(state)
-      state, reward, terminated, truncated, _ = env.step(action)
-      done = terminated or truncated
-      ppo.store(reward, done)
 
-      curr_reward += reward
-
-      if done:
-        ppo.train()
-        break
-
-    rewards.append(curr_reward)
+  for _ in range(num_iterations):
+    ppo.collect_rollout(max_steps)
+    ppo.train()
 
   env.close()
 
-  return rewards
+
+if __name__ == "__main__":
+  run()
