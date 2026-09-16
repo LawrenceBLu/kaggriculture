@@ -111,6 +111,7 @@ class PPO():
         non_tiles = torch.tensor(non_tiles, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
         action, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts)
+        # turn action indices into string
 
       new_state, reward, terminated, truncated, info = self.env.step(action.item())
       n_steps += 1

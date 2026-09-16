@@ -23,13 +23,14 @@ class CNN(nn.Module):
         x = self.fc1(x)
 
 class ActorCritic(nn.Module):
-    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, action_dim):
+    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, market_action_dim):
         super().__init__()
         self.cnn = CNN(grid_size, cnn_dim)
         self.pre_lstm = nn.Linear(cnn_dim+non_tile_len, linear_dim)
         self.lstm = nn.LSTM(linear_dim, lstm_dim, num_layers, batch_first=True)
         
-        self.actor_head = nn.Linear(lstm_dim, action_dim)
+        self.actor_farm_head = nn.Linear(lstm_dim, farm_action_dim)
+        self.actor_market_head = nn.Linear(lstm_dim, market_action_dim)
         self.critic_head = nn.Linear(lstm_dim, 1)
         self.linear_dim = linear_dim
 
@@ -58,24 +59,75 @@ class ActorCritic(nn.Module):
             lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
         return lstm_out, hidden
 
-    def forward(self, grid, non_tiles, hidden, ep_starts):
-        # No detach because ran under no_grad()
-        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts)
+    def compute_actions(self, farm_logits, market_logits, num_hands, num_orders, internal_obs):
+        hands_vec = farm_logits.reshape(num_hands+1, -1)
+        market_vec = market_logits.reshape(num_orders, -1)
 
-        logits = self.actor_head(lstm_out)
-        dist = Categorical(logits = logits)
-        action = dist.sample()
-        log_prob = dist.log_prob(action)
+        farm_actions = []
+        market_actions = []
+        log_probs = []
+
+        for hands_logits in hands_vec:
+            create_mask(internal_obs)
+            farm_dist = MaskedCategorical(logits=hands_logits, mask)
+            farm_action = farm_dist.sample()
+            log_prob = farm_dist.log_prob(farm_action)
+            farm_actions.append(farm_action)
+            log_probs.append(log_prob)
+
+        for market_logits in market_vec:
+            market_dist = MaskedCategorical(logits=market_logits, mask)
+            market_action = market_dist.sample()
+            log_prob = market_dist.log_prob(market_action)
+            market_actions.append(market_action)
+            log_probs.append(log_prob)
+
+        return farm_actions, market_action, log_probs
+
+    def compute_entropy(self, farm_logits, market_logits, actions):
+        hands_vec = farm_logits.reshape(num_hands+1, -1)
+        market_vec = market_logits.reshape(num_orders, -1)
+
+        farm_actions = []
+        market_actions = []
+        log_probs = []
+
+        for hands_logits in hands_vec:
+            farm_dist = MaskedCategorical(logits=hands_logits, mask)
+            farm_action = farm_dist.sample()
+            log_prob = farm_dist.log_prob(farm_action)
+            farm_actions.append(farm_action)
+            log_probs.append(log_prob)
+
+        for market_logits in market_vec:
+            market_dist = MaskedCategorical(logits=market_logits, mask)
+            market_action = market_dist.sample()
+            log_prob = market_dist.log_prob(market_action)
+            market_actions.append(market_action)
+            log_probs.append(log_prob)
+    
+
+    def forward(self, grid, non_tiles, hidden, ep_starts, num_hands, internal_obs):
+        # No detach because ran under no_grad()
+        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts, internal_obs)
+
+        farm_logits = self.actor_farm_head(lstm_out)
+        market_logits = self.actor_market_head(lstm_out)
+        farm_actions, market_actions, log_prob = self.handle_actions(farm_logits, market_logits, num_hands, internal_obs)
+        # dist = Categorical(logits = logits)
+        # action = dist.sample()
+        # log_prob = dist.log_prob(action)
 
         state_value = self.critic_head(lstm_out)
 
-        return action, log_prob, state_value, hidden
+        return farm_actions, market_actions, log_prob, state_value, hidden
 
     def evaluate(self, grid, non_tiles, actions, hiddens, ep_starts):
         hidden = hiddens[0]
         lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
         
-        logits = self.actor_head(lstm_out)
+        farm_logits = self.actor_farm_head(lstm_out)
+        market_logits = self.actor_market_head(lstm_out)
         dist = Categorical(logits = logits)
         log_probs = dist.log_prob(actions)
         entropy = dist.entropy()
