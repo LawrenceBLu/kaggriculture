@@ -3,11 +3,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
-from models import ActorCritic, CNN
+from models import ActorCritic
+from copy import deepcopy
 
 class ReplayBuffer():
   def __init__(self):
-    self.states = []
+    self.state_grid = []
+    self.state_non_tiles = []
     self.actions = []
     self.rewards = []
     self.dones = []
@@ -16,7 +18,8 @@ class ReplayBuffer():
     self.lstm_hidden = []
 
   def clear(self):
-    del self.states[:]
+    del self.state_grid[:]
+    del self.state_non_tiles[:]
     del self.actions[:]
     del self.rewards[:]
     del self.dones[:]
@@ -26,14 +29,15 @@ class ReplayBuffer():
 
 
 class PPO():
-  def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, value_c, entr_c, device):
+  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
     self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
+    self.env = env
     
     self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
 
-    self.old_model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
-    self.old_model.load_state_dict(self.model.state_dict())
+    # self.old_model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
+    # self.old_model.load_state_dict(self.model.state_dict())
     self.mse = nn.MSELoss()
     self.hidden = (torch.zeros(lstm_layers, 1, lstm_dim, devic=device), torch.zeros(lstm_layers, 1, lstm_dim, devic=device))
 
@@ -42,11 +46,23 @@ class PPO():
     self.value_c = value_c
     self.entr_c = entr_c
     self.epochs = epochs
+    self.gae_lambda = gae_lambda
+    self.gamma = gamma
+
+    self.last_obs = None
+    self.last_hidden = None
+
+    self.init_env()
+
+  def init_env(self):
+    state, _ = self.env.reset()
+    self.last_obs = state
+    self.last_ep_starts = [True]
 
   def get_action(self, state):
     with torch.no_grad():
       state = torch.FloatTensor(state).to(self.device)
-      action, log_prob, state_value = self.old_model(state)
+      action, log_prob, state_value = self.model(state)
 
     self.replay_buffer.states.append(state)
     self.replay_buffer.actions.append(action)
@@ -59,8 +75,45 @@ class PPO():
     self.replay_buffer.rewards.append(reward)
     self.replay_buffer.dones.append(done)
 
+  def collect_rollout(self, n_rollout_steps):
+    n_steps = 0
+    self.replay_buffer.clear()
+    lstm_hidden = deepcopy(self.last_hidden)
 
-  def gae(self, values, dones, rewards, gae_lambda=0.99, gamma=0.95):
+    while n_steps < n_rollout_steps:
+      with torch.no_grad():
+        grid, non_tiles = self.process_state(self.last_obs)
+        grid = torch.tensor(grid, device=self.device)
+        non_tiles = torch.tensor(non_tiles, device=self.device)
+        ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
+        action, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts)
+
+      new_state, reward, terminated, truncated, info = self.env.step(action)
+      n_steps += 1
+
+      if terminated == False and truncated == True and info.get("terminal_observation") is not None:
+        terminal_grid, terminal_non_tiles = self.process_state(info.get("terminal_observation"))
+        with torch.no_grad():
+          ep_starts = torch.tensor([False], dtype=torch.float32, device=self.device)
+          terminal_value = self.model.predict_values(terminal_grid, terminal_non_tiles, lstm_hidden, ep_starts)
+        reward += self.gamma * terminal_value
+
+      self.replay_buffer.store(
+        self.last_obs,
+        action,
+        reward,
+        self.last_ep_starts,
+        state_value,
+        log_prob,
+        self.last_hidden
+      )
+
+      self.last_obs = new_state
+      self.last_ep_starts = terminated or truncated
+      self.last_hidden = lstm_hidden
+
+
+  def gae(self, values, dones, rewards):
     '''
     gae_lambda: future discount
     gamma: smoothing paramater
@@ -75,8 +128,8 @@ class PPO():
       else:
         next_val = values[t+1]
       mask = 0 if dones[t] else 1
-      delta = rewards[t] + gamma * next_val * mask - values[t]
-      advantage[t] = last_gae = delta + gae_lambda * gamma * mask * last_gae
+      delta = rewards[t] + self.gamma * next_val * mask - values[t]
+      advantage[t] = last_gae = delta + self.gae_lambda * self.gamma * mask * last_gae
 
     returns = advantage + values
 

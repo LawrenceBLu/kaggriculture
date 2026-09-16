@@ -31,35 +31,61 @@ class ActorCritic(nn.Module):
         
         self.actor_head = nn.Linear(lstm_dim, action_dim)
         self.critic_head = nn.Linear(lstm_dim, 1)
+        self.linear_dim = linear_dim
 
-    def forward(self, grid, non_tiles, hidden):
+    def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
+        # FINISH handling lstm state resets
         grid_state = self.cnn(grid)
         state = torch.cat([grid_state, non_tiles], dim=-1)
         x = self.pre_lstm(state)
-        lstm_out, hidden = self.lstm(x, hidden)
+
+        if torch.all(ep_starts == 0.0):
+            lstm_out, hidden = self.lstm(x, hidden)
+        else:
+            lstm_out = []
+            n_seq = hidden[0].shape[1]
+            ep_starts = ep_starts.reshape((n_seq, -1)).swapaxes(0, 1)
+            features = x.reshape((n_seq, -1, self.linear_dim)).swapaxes(0, 1)
+            for feats, start in zip(features, ep_starts):
+                out, hidden = self.lstm(feats.unsqueeze(dim=1),
+                    (
+                        (1.0 - start).view(1, n_seq, 1) * hidden[0],
+                        (1.0 - start).view(1, n_seq, 1) * hidden[1]
+                    ),
+                )
+                lstm_out += [out]
+
+            lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
+        return lstm_out, hidden
+
+    def forward(self, grid, non_tiles, hidden, ep_starts):
+        # No detach because ran under no_grad()
+        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts)
+
         logits = self.actor_head(lstm_out)
-        cat = Categorical(logits = logits)
-        action = cat.sample()
-        log_prob = cat.log_prob(action)
+        dist = Categorical(logits = logits)
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
 
         state_value = self.critic_head(lstm_out)
 
-        return action.detach(), log_prob.detach(), state_value.detach(), (hidden[0].detach(), hidden[1].detach())
+        return action, log_prob, state_value, hidden
 
-    def evaluate(self, states, actions, hidden, last_episode_dones):
-        # No detach because this is used for optimization
-        # FINISH handling lstm state resets
-        # FINISH
-
-        grid_state = self.cnn(grid)
-        state = torch.cat([grid_state, non_tiles], dim=-1)
-        x = self.pre_lstm(state)
-        lstm_out = self.lstm(x, hidden)
+    def evaluate(self, grid, non_tiles, actions, hiddens, ep_starts):
+        hidden = hiddens[0]
+        lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
+        
         logits = self.actor_head(lstm_out)
-        cat = Categorical(logits = logits)
-        log_probs = cat.log_prob(actions)
-        entropy = cat.entropy()
+        dist = Categorical(logits = logits)
+        log_probs = dist.log_prob(actions)
+        entropy = dist.entropy()
 
         state_values = self.critic_head(lstm_out).squeeze(-1)
 
         return log_probs, entropy, state_values
+
+    def predict_value(self, grid, non_tiles, hidden, ep_starts):
+        lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
+        state_value = self.critic_head(lstm_out)
+
+        return state_value
