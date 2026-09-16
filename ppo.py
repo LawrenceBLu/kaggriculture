@@ -16,6 +16,8 @@ class ReplayBuffer():
     self.state_values = []
     self.log_probs = []
     self.lstm_hidden = []
+    self.advantages = []
+    self.returns = []
 
   def clear(self):
     del self.state_grid[:]
@@ -26,6 +28,35 @@ class ReplayBuffer():
     del self.state_values[:]
     del self.log_probs[:]
     del self.lstm_hidden[:]
+    del self.advantages[:]
+    del self.returns[:]
+
+  def compute_gae(self, next_value, next_done, gae_lambda, gamma):
+      '''
+      gae_lambda: future discount
+      gamma: smoothing paramater
+  
+      '''
+      values = torch.squeeze(torch.stack(self.state_values, dim=0)).detach().to(self.device)
+
+      advantage = torch.zeros_like(values)
+      last_gae = 0
+  
+      for t in reversed(range(len(self.rewards))):
+        if t == len(self.rewards) - 1:
+          next_val = next_value
+          mask = 1.0 - next_done
+        else:
+          next_val = values[t+1]
+          mask = 0 if self.dones[t] else 1
+        delta = self.rewards[t] + gamma * next_val * mask - values[t]
+        advantage[t] = last_gae = delta + gae_lambda * gamma * mask * last_gae
+  
+      returns = advantage + values
+
+      self.advantages = advantage
+      self.returns = returns  
+  
 
 
 class PPO():
@@ -112,37 +143,22 @@ class PPO():
       self.last_ep_starts = terminated or truncated
       self.last_hidden = lstm_hidden
 
+      with torch.no_grad():
+        grid, non_tiles = self.process_state(new_state)
+        done = terminated or truncated
+        ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
+        state_value = self.model.predict_values(grid, non_tiles, lstm_hidden, ep_starts)
 
-  def gae(self, values, dones, rewards):
-    '''
-    gae_lambda: future discount
-    gamma: smoothing paramater
-
-    '''
-    advantage = torch.zeros_like(values)
-    last_gae = 0
-
-    for t in reversed(range(len(rewards))):
-      if t == len(rewards) - 1:
-        next_val = 0
-      else:
-        next_val = values[t+1]
-      mask = 0 if dones[t] else 1
-      delta = rewards[t] + self.gamma * next_val * mask - values[t]
-      advantage[t] = last_gae = delta + self.gae_lambda * self.gamma * mask * last_gae
-
-    returns = advantage + values
-
-    return advantage, returns
+      self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma)
 
 
   def train(self):
     old_states = torch.squeeze(torch.stack(self.replay_buffer.states, dim=0)).detach().to(self.device)
     old_actions = torch.squeeze(torch.stack(self.replay_buffer.actions, dim=0)).detach().to(self.device)
-    old_state_values = torch.squeeze(torch.stack(self.replay_buffer.state_values, dim=0)).detach().to(self.device)
     old_log_probs = torch.squeeze(torch.stack(self.replay_buffer.log_probs, dim=0)).detach().to(self.device)
 
-    advantage, returns = self.gae(old_state_values, self.replay_buffer.dones, self.replay_buffer.rewards)
+    advantage = self.replay_buffer.advantages
+    returns = self.replay_buffer.returns
 
     for _ in range(self.epochs):
       log_probs, entropy, state_values = self.model.evaluate(old_states, old_actions)
