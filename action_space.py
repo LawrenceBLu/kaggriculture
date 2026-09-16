@@ -1,6 +1,6 @@
 import global_vars
 import numpy as np
-
+#
 # FARM ACTIONS
 """ 
 ["NORTH"]
