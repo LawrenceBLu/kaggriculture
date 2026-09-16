@@ -31,6 +31,15 @@ class ReplayBuffer():
     del self.advantages[:]
     del self.returns[:]
 
+  def store(self, state, action , state_value, log_prob, reward, done):
+    self.states.append(state)
+    self.actions.append(action)
+    self.state_values.append(state_value)
+    self.log_probs.append(log_prob)
+    self.rewards.append(reward)
+    self.dones.append(done)
+
+
   def compute_gae(self, next_value, next_done, gae_lambda, gamma):
       '''
       gae_lambda: future discount
@@ -90,22 +99,6 @@ class PPO():
     self.last_obs = state
     self.last_ep_starts = [True]
 
-  def get_action(self, state):
-    with torch.no_grad():
-      state = torch.FloatTensor(state).to(self.device)
-      action, log_prob, state_value = self.model(state)
-
-    self.replay_buffer.states.append(state)
-    self.replay_buffer.actions.append(action)
-    self.replay_buffer.state_values.append(state_value)
-    self.replay_buffer.log_probs.append(log_prob)
-
-    return action.item()
-
-  def store(self, reward, done):
-    self.replay_buffer.rewards.append(reward)
-    self.replay_buffer.dones.append(done)
-
   def collect_rollout(self, n_rollout_steps):
     n_steps = 0
     self.replay_buffer.clear()
@@ -119,7 +112,7 @@ class PPO():
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
         action, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts)
 
-      new_state, reward, terminated, truncated, info = self.env.step(action)
+      new_state, reward, terminated, truncated, info = self.env.step(action.item())
       n_steps += 1
 
       if terminated == False and truncated == True and info.get("terminal_observation") is not None:
