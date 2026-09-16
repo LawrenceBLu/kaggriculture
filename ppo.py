@@ -31,7 +31,7 @@ class ReplayBuffer():
     del self.advantages[:]
     del self.returns[:]
 
-  def compute_gae(self, next_value, next_done):
+  def compute_gae(self, next_value, next_done, gae_lambda, gamma):
       '''
       gae_lambda: future discount
       gamma: smoothing paramater
@@ -49,8 +49,8 @@ class ReplayBuffer():
         else:
           next_val = values[t+1]
           mask = 0 if self.dones[t] else 1
-        delta = self.rewards[t] + self.gamma * next_val * mask - values[t]
-        advantage[t] = last_gae = delta + self.gae_lambda * self.gamma * mask * last_gae
+        delta = self.rewards[t] + gamma * next_val * mask - values[t]
+        advantage[t] = last_gae = delta + gae_lambda * gamma * mask * last_gae
   
       returns = advantage + values
 
@@ -149,7 +149,7 @@ class PPO():
         ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
         state_value = self.model.predict_values(grid, non_tiles, lstm_hidden, ep_starts)
 
-      self.replay_buffer.compute_gae(state_value, done)
+      self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma)
 
 
   def train(self):
