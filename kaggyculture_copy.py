@@ -19,6 +19,10 @@ list_of_original_market_prices_animals_buy = [300, 400, 500]
 
 # crop info
 list_of_first_yield_day_crops = [2, 4, 8, 10, 10]
+list_of_max_yield_steps_crops = [96, 72, 264, 384, 240]
+list_of_max_yield_crops = [6, 4, 4, 4, 6]
+list_of_max_yield_animals = [4, 6, 6]
+list_of_max_yield_steps_animals = []
 
 # HELPFUL FUNCTIONS
 def _fib(n):
@@ -78,19 +82,54 @@ def setup_non_tile_observation(obs):
     obs_arr = [money, market_inventory, market_prices, shed_inven, seed_inven, inventory_obs, curr_num_hires, curr_num_hires/cost_of_next_hire, encode_unlocked_shops(obs['town']['unlocked_shops'])]
     return obs_arr
 
+MAX_UNWATERED_DAYS = 30
 def setup_tile_obs(obs):
     player_num = obs["player"]
+    list_of_all_animals_w_none = list_of_all_animals + [None]
     tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
-    one_hot_matrix = np.eye(len(tile_options))
     
-    full_tiles = []
-    for tile_row in obs['farms'][player_num]['tiles']:
-        tile_row = []
-        for tile in tile_row:
-            tile_row.append(one_hot_matrix[tile_options.index(tile)])
-        full_tiles.append(tile_row)
-            
-    return full_tiles
+    list_of_layers = []
+    
+    for option in tile_options:
+        zero_matrix_copy = np.zeros((10,10))
+        plant_num = 0
+        animal_num = 0
+        for y in range(10):
+            for x in range(10):
+                tile = obs['farms'][player_num]['tiles'][y][x]
+                feature_vector = []
+                if option == None and tile == None:
+                    zero_matrix_copy[y][x] = 1
+                elif option == "LOCKED" and tile == 'LOCKED':
+                    zero_matrix_copy[y][x] = 1
+                elif option == "WEED" and tile == "WEED":
+                    zero_matrix_copy[y][x] = 1
+                elif tile['KIND'] == "PLANT" and option == list_of_all_crops[plant_num]:
+                    steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                    watered_today = int(tile['watered_today'])
+                    consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
+                    yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
+                    max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                    fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
+                    feature_vector = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
+                    zero_matrix_copy[y][x] = feature_vector
+                    if x == 9 and y == 9: plant_num += 1
+                elif tile['KIND'] == 'ANIMAL' and option == list_of_all_animals_w_none[animal_num]:
+                    if tile['animal'] == None:
+                        zero_matrix_copy[y][x] = np.zeros(9)
+                        pass
+                    steps_since_placed_norm = (obs['step'] - (tile['placed_day']*24))/720
+                    yield_units_animal = tile['yield_units']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
+                    fed_today = int(tile['fed_today'])
+                    consecutive_unfed = tile['consecutive_unfed']/2
+                    cared_today = int(tile['cared_today'])
+                    fertilizer_available = int(tile['fertilizer_available'])
+                    pending_care_bonus = tile['pending_care_bonus']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
+                    feature_vector = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
+                    zero_matrix_copy[y][x] = feature_vector
+                    if x == 9 and y == 0: animal_num += 1
+        list_of_layers.append(zero_matrix_copy)
+    return list_of_layers
 
 # action mask
 
