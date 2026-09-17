@@ -143,16 +143,3 @@ class ActorCritic(nn.Module):
         state_value = self.critic_head(lstm_out)
 
         return state_value
-
-
-
-class MaskedCategorical(Categorical):
-    def __init__(self, logits, mask):
-        self.logits = logits
-        self.mask = mask
-    
-    def entropy(self):
-        minimum = torch.finfo(self.logits.dtype).min
-        masked_logits = torch.where(self.mask, self.logits, minimum)
-        super(MaskedCategorical, self).__init__(logits=masked_logits)
-        
