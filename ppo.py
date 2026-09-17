@@ -6,6 +6,8 @@ from torch.distributions import Categorical
 from models import ActorCritic
 from copy import deepcopy
 from kaggyculture import invalid_action
+from action_space import farmhand_action_space, market_action_space
+
 
 class ReplayBuffer():
   def __init__(self):
@@ -100,12 +102,14 @@ class PPO():
     self.last_obs = state
     self.last_ep_starts = [True]
 
-  def process_obs(self, last_obs, all_farm_actions, all_market_actions):
+  def process_obs(self, last_obs):
     # Add function to split up obs into grid and non_tiles
+    
 
-    mask_func = torch.vmap(invalid_action, in_dims=(None, 0), out_dims=0)
-    farm_mask = mask_func(last_obs, all_farm_actions)
-    market_mask = mask_func(last_obs, all_market_actions)
+    all_farm_actions = farmhand_action_space()
+    all_market_actions = market_action_space()
+    farm_mask = list(map(lambda x: invalid_action(last_obs, x), all_farm_actions))
+    market_mask = list(map(lambda x: invalid_action(last_obs, x), all_market_actions))
 
     return grid, non_tiles, farm_mask, market_mask
 
