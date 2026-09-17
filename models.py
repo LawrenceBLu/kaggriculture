@@ -2,9 +2,9 @@ import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Categorical
 import torch.nn.functional as F
 from torchrl.modules import MaskedCategorical
+from kaggyculture import update_mask
 
 #heehee
 
@@ -64,7 +64,7 @@ class ActorCritic(nn.Module):
             lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
         return lstm_out, hidden
 
-    def compute_actions(self, farm_logits, market_logits, internal_obs):
+    def compute_actions(self, farm_logits, market_logits, farm_mask, market_mask, internal_obs):
         hands_vec = farm_logits.reshape(self.num_hands+1, -1)
         market_vec = market_logits.reshape(self.num_orders, -1)
 
@@ -74,20 +74,21 @@ class ActorCritic(nn.Module):
         farm_masks = []
         market_masks = []
         log_probs = []
+        
 
         for hands_logits in hands_vec:
-            mask = create_mask(internal_obs)
-            farm_masks.append(mask)
-            farm_dist = MaskedCategorical(logits=hands_logits, mask=mask)
+            farm_masks.append(farm_mask)
+            farm_dist = MaskedCategorical(logits=hands_logits, mask=farm_mask)
+            farm_mask = update_mask(farm_mask, internal_obs, is_farm=True)
             farm_action = farm_dist.sample()
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)
             log_probs.append(log_prob)
 
         for market_logits in market_vec:
-            mask = create_mask(internal_obs)
-            market_masks.append(mask)
-            market_dist = MaskedCategorical(logits=market_logits, mask=mask)
+            market_masks.append(market_mask)
+            market_dist = MaskedCategorical(logits=market_logits, mask=market_mask)
+            market_mask = update_mask(market_mask, internal_obs)
             market_action = market_dist.sample()
             log_prob = market_dist.log_prob(market_action)
             market_actions.append(market_action)
