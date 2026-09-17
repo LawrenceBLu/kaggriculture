@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from models import ActorCritic
 from copy import deepcopy
+from kaggyculture import invalid_action
 
 class ReplayBuffer():
   def __init__(self):
@@ -99,6 +100,16 @@ class PPO():
     self.last_obs = state
     self.last_ep_starts = [True]
 
+  def process_obs(self, last_obs, all_farm_actions, all_market_actions):
+    # Add function to split up obs into grid and non_tiles
+
+    mask_func = torch.vmap(invalid_action, in_dims=(None, 0), out_dims=0)
+    farm_mask = mask_func(last_obs, all_farm_actions)
+    market_mask = mask_func(last_obs, all_market_actions)
+
+    return grid, non_tiles, farm_mask, market_mask
+
+
   def collect_rollout(self, n_rollout_steps):
     n_steps = 0
     self.replay_buffer.clear()
@@ -106,7 +117,7 @@ class PPO():
 
     while n_steps < n_rollout_steps:
       with torch.no_grad():
-        grid, non_tiles = self.process_state(self.last_obs)
+        grid, non_tiles, farm_mask, market_mask = self.process_obs(self.last_obs)
         grid = torch.tensor(grid, device=self.device)
         non_tiles = torch.tensor(non_tiles, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)

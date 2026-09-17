@@ -2,8 +2,9 @@ import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Categorical
 import torch.nn.functional as F
+from torchrl.modules import MaskedCategorical
+from kaggyculture import update_mask
 
 #heehee
 
@@ -25,14 +26,16 @@ class CNN(nn.Module):
         x = self.fc1(x)
 
 class ActorCritic(nn.Module):
-    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, market_action_dim):
+    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders):
         super().__init__()
         self.cnn = CNN(grid_size, cnn_dim)
         self.pre_lstm = nn.Linear(cnn_dim+non_tile_len, linear_dim)
         self.lstm = nn.LSTM(linear_dim, lstm_dim, num_layers, batch_first=True)
-        
-        self.actor_farm_head = nn.Linear(lstm_dim, farm_action_dim)
-        self.actor_market_head = nn.Linear(lstm_dim, market_action_dim)
+
+        self.num_hands = num_hands
+        self.num_orders = num_orders
+        self.actor_farm_head = nn.Linear(lstm_dim, farm_action_dim*(num_hands+1))
+        self.actor_market_head = nn.Linear(lstm_dim, market_action_dim*num_orders)
         self.critic_head = nn.Linear(lstm_dim, 1)
         self.linear_dim = linear_dim
 
@@ -61,78 +64,101 @@ class ActorCritic(nn.Module):
             lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
         return lstm_out, hidden
 
-    def compute_actions(self, farm_logits, market_logits, num_hands, num_orders, internal_obs):
-        hands_vec = farm_logits.reshape(num_hands+1, -1)
-        market_vec = market_logits.reshape(num_orders, -1)
+    def compute_actions(self, farm_logits, market_logits, farm_mask, market_mask, internal_obs):
+        hands_vec = farm_logits.reshape(self.num_hands+1, -1)
+        market_vec = market_logits.reshape(self.num_orders, -1)
 
         farm_actions = []
         market_actions = []
+
+        farm_masks = []
+        market_masks = []
         log_probs = []
+        
 
         for hands_logits in hands_vec:
-            create_mask(internal_obs)
-            farm_dist = MaskedCategorical(logits=hands_logits, mask)
+            farm_masks.append(farm_mask)
+            farm_dist = MaskedCategorical(logits=hands_logits, mask=farm_mask)
+            farm_mask = update_mask(farm_mask, internal_obs, is_farm=True)
             farm_action = farm_dist.sample()
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)
             log_probs.append(log_prob)
 
         for market_logits in market_vec:
-            market_dist = MaskedCategorical(logits=market_logits, mask)
+            market_masks.append(market_mask)
+            market_dist = MaskedCategorical(logits=market_logits, mask=market_mask)
+            market_mask = update_mask(market_mask, internal_obs)
             market_action = market_dist.sample()
             log_prob = market_dist.log_prob(market_action)
             market_actions.append(market_action)
             log_probs.append(log_prob)
 
-        return farm_actions, market_action, log_probs
+        log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
+        return farm_actions, market_actions, log_p, farm_masks, market_masks
 
-    def compute_entropy(self, farm_logits, market_logits, actions):
-        hands_vec = farm_logits.reshape(num_hands+1, -1)
-        market_vec = market_logits.reshape(num_orders, -1)
+    def compute_entropy(self, farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks,):
+        hands_vec = farm_logits.reshape(self.num_hands+1, -1)
+        market_vec = market_logits.reshape(self.num_orders, -1)
 
-        farm_actions = []
-        market_actions = []
         log_probs = []
+        entropies = []
+        log_num_valid = []
 
-        for hands_logits in hands_vec:
-            farm_dist = MaskedCategorical(logits=hands_logits, mask)
-            farm_action = farm_dist.sample()
-            log_prob = farm_dist.log_prob(farm_action)
-            farm_actions.append(farm_action)
+        for hands_i in range(len(hands_vec)):
+            farm_dist = MaskedCategorical(logits=farm_logits[hands_i], mask=farm_masks[hands_i])
+            farm_entropy = farm_dist.entropy()
+            log_prob = farm_dist.log_prob(farm_actions[hands_i])
+
+            num_valid = farm_masks[hands_i].sum(-1).clamp(min=1)
+            log_num_valid.append(torch.log(num_valid.float()).clamp(min=1e-8))
+
+            entropies.append(farm_entropy)
             log_probs.append(log_prob)
 
-        for market_logits in market_vec:
-            market_dist = MaskedCategorical(logits=market_logits, mask)
-            market_action = market_dist.sample()
-            log_prob = market_dist.log_prob(market_action)
-            market_actions.append(market_action)
-            log_probs.append(log_prob)
-    
+        for market_i in range(len(market_vec)):
+            market_dist = MaskedCategorical(logits=market_logits[market_i], mask=market_masks[market_i])
+            market_entropy = market_dist.entropy()
+            log_prob = market_dist.log_prob(market_actions[market_i])
 
-    def forward(self, grid, non_tiles, hidden, ep_starts, num_hands, internal_obs):
+            num_valid = market_masks[hands_i].sum(-1).clamp(min=1)
+            log_num_valid.append(torch.log(num_valid.float()).clamp(min=1e-8))
+
+            entropies.append(market_entropy)
+            log_probs.append(log_prob)
+
+        log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
+        normed = torch.stack(entropies, dim=-1)/torch.stack(log_num_valid, dim=-1)
+        entropy = normed.mean(dim=-1).mean()
+
+        return log_p, entropy
+
+    def forward(self, grid, non_tiles, hidden, ep_starts, internal_obs):
         # No detach because ran under no_grad()
         lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts, internal_obs)
 
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
-        farm_actions, market_actions, log_prob = self.handle_actions(farm_logits, market_logits, num_hands, internal_obs)
+        farm_actions, market_actions, log_prob, farm_masks, market_masks = self.compute_actions(farm_logits, market_logits, internal_obs)
         # dist = Categorical(logits = logits)
         # action = dist.sample()
         # log_prob = dist.log_prob(action)
 
         state_value = self.critic_head(lstm_out)
 
-        return farm_actions, market_actions, log_prob, state_value, hidden
+        return farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, hidden
 
-    def evaluate(self, grid, non_tiles, actions, hiddens, ep_starts):
+    def evaluate(self, grid, non_tiles, farm_actions, market_actions, farm_masks, market_masks, hiddens, ep_starts):
         hidden = hiddens[0]
         lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
         
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
-        dist = Categorical(logits = logits)
-        log_probs = dist.log_prob(actions)
-        entropy = dist.entropy()
+        log_probs, entropy = self.compute_entropy(farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks)
+
+        # dist = Categorical(logits = logits)
+        # log_probs = dist.log_prob(actions)
+        # entropy = dist.entropy()
 
         state_values = self.critic_head(lstm_out).squeeze(-1)
 
