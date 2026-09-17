@@ -1,9 +1,6 @@
 from kaggle_environments import make
 import numpy as np
-import torch
 from torch.distributions.categorical import Categorical
-
-env = make("kaggriculture", debug=True)
 
 # HELPFUL DICTIONARIES
 list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
