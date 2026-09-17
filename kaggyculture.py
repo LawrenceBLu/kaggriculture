@@ -253,7 +253,6 @@ def invalid_action(obs, action, farmhand_index=None):
         if len(action) < 3: return invalid
         if num <= 0: return invalid
         if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        if sum(shed.values()) >= 100: return invalid
         buy_price = obs['market']['prices'][item]
         if money < buy_price * action[2]: return invalid
 
@@ -261,7 +260,6 @@ def invalid_action(obs, action, farmhand_index=None):
         if len(action) < 3: return invalid
         if num <= 0: return invalid
         if item not in list_of_all_animals: return invalid
-        if sum(shed.values()) >= 100: return invalid
         if money < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * action[2]: return invalid
 
     if type_action == "SELL":
