@@ -1,5 +1,7 @@
 from kaggle_environments import make
 import numpy as np
+import torch
+from torch.distributions.categorical import Categorical
 
 env = make("kaggriculture", debug=True)
 
@@ -76,6 +78,19 @@ def setup_non_tile_observation(obs):
     obs_arr = [money, market_inventory, market_prices, shed_inven, seed_inven, inventory_obs, curr_num_hires, curr_num_hires/cost_of_next_hire, encode_unlocked_shops(obs['town']['unlocked_shops'])]
     return obs_arr
 
+def setup_tile_obs(obs):
+    player_num = obs["player"]
+    tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
+    one_hot_matrix = np.eye(len(tile_options))
+    
+    full_tiles = []
+    for tile_row in obs['farms'][player_num]['tiles']:
+        tile_row = []
+        for tile in tile_row:
+            tile_row.append(one_hot_matrix[tile_options.index(tile)])
+        full_tiles.append(tile_row)
+            
+    return full_tiles
 
 # action mask
 
@@ -225,13 +240,3 @@ def invalid_action(obs, action, farmhand_index=None):
 
     return valid
 
-import torch
-from torch.distributions.categorical import Categorical
-
-class Masked_Categorical(Categorical):
-    def __init__(self, logits, mask):
-        self.logits = logits
-        self.mask = mask
-    def entropy(self, action_space):
-        self.logits
-    
