@@ -47,10 +47,13 @@ for i, shop in enumerate(list_of_all_shops):
 
 
 def setup_non_tile_observation(obs):
+    obs = obs['observation']
     player_num = obs["player"]
     market_curr_inven = obs['market']['inventory']
-    market_inventory = [(market_curr_inven[i] - 10000) / list_of_market_deviation[i] for i in list_of_market_deviation]
-    market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_inventory = [(market_curr_inven[inven] - 10000) / list_of_market_deviation[list_of_all_sellable_resources.index(inven) ] for inven in market_curr_inven]
+    # market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_prices = [obs['market']['prices'][key]/list_of_original_market_prices_resources_sell[list_of_all_sellable_resources.index(key)] for key in obs['market']['prices'].keys()]
+
 
     def encode_inventory(inv, max_inv, resource_arr):
         if max_inv == 0:
@@ -81,8 +84,8 @@ def setup_non_tile_observation(obs):
 
 MAX_UNWATERED_DAYS = 30
 def setup_tile_obs(obs):
-    player_num = obs["player"]
     obs = obs['observation']
+    player_num = obs["player"]
     list_of_all_animals_w_none = list_of_all_animals + [None]
     tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
     
@@ -96,36 +99,38 @@ def setup_tile_obs(obs):
             for x in range(10):
                 tile = obs['farms'][player_num]['tiles'][y][x]
                 feature_vector = []
-                if option == None and tile == None:
-                    zero_matrix_copy[y][x] = 1
-                elif option == "LOCKED" and tile == 'LOCKED':
-                    zero_matrix_copy[y][x] = 1
-                elif option == "WEED" and tile == "WEED":
-                    zero_matrix_copy[y][x] = 1
-                elif tile['KIND'] == "PLANT" and option == list_of_all_crops[plant_num]:
-                    steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
-                    watered_today = int(tile['watered_today'])
-                    consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
-                    yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
-                    max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
-                    fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
-                    feature_vector = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
-                    zero_matrix_copy[y][x] = feature_vector
-                    if x == 9 and y == 9: plant_num += 1
-                elif tile['KIND'] == 'ANIMAL' and option == list_of_all_animals_w_none[animal_num]:
-                    if tile['animal'] == None:
-                        zero_matrix_copy[y][x] = np.zeros(9)
-                        pass
-                    steps_since_placed_norm = (obs['step'] - (tile['placed_day']*24))/720
-                    yield_units_animal = tile['yield_units']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
-                    fed_today = int(tile['fed_today'])
-                    consecutive_unfed = tile['consecutive_unfed']/2
-                    cared_today = int(tile['cared_today'])
-                    fertilizer_available = int(tile['fertilizer_available'])
-                    pending_care_bonus = tile['pending_care_bonus']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
-                    feature_vector = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
-                    zero_matrix_copy[y][x] = feature_vector
-                    if x == 9 and y == 0: animal_num += 1
+                if type(tile) == str or tile is None:
+                    if option == None and tile == None:
+                        zero_matrix_copy[y][x] = 1
+                    elif option == "LOCKED" and tile == 'LOCKED':
+                        zero_matrix_copy[y][x] = 1
+                    elif option == "WEED" and tile == "WEED":
+                        zero_matrix_copy[y][x] = 1
+                else:
+                    if tile['kind'] == "PLANT" and option == list_of_all_crops[plant_num]:
+                        steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                        watered_today = int(tile['watered_today'])
+                        consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
+                        yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
+                        max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                        fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
+                        feature_vector = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
+                        zero_matrix_copy[y][x] = feature_vector
+                        if x == 9 and y == 9: plant_num += 1
+                    elif (tile['kind'] == 'COOP' or tile['kind'] == 'PASTURE') and option == list_of_all_animals_w_none[animal_num]:
+                        if tile['animal'] == None:
+                            zero_matrix_copy[y][x] = np.zeros(9)
+                            pass
+                        steps_since_placed_norm = (obs['step'] - (tile['placed_day']*24))/720
+                        yield_units_animal = tile['yield_units']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
+                        fed_today = int(tile['fed_today'])
+                        consecutive_unfed = tile['consecutive_unfed']/2
+                        cared_today = int(tile['cared_today'])
+                        fertilizer_available = int(tile['fertilizer_available'])
+                        pending_care_bonus = tile['pending_care_bonus']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
+                        feature_vector = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
+                        zero_matrix_copy[y][x] = feature_vector
+                        if x == 9 and y == 0: animal_num += 1
         list_of_layers.append(zero_matrix_copy)
     return list_of_layers
 
