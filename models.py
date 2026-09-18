@@ -97,7 +97,7 @@ class ActorCritic(nn.Module):
         log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
         return farm_actions, market_actions, log_p, farm_masks, market_masks
 
-    def compute_entropy(self, farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks,):
+    def compute_entropy(self, farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks):
         hands_vec = farm_logits.reshape(self.num_hands+1, -1)
         market_vec = market_logits.reshape(self.num_orders, -1)
 
@@ -133,13 +133,13 @@ class ActorCritic(nn.Module):
 
         return log_p, entropy
 
-    def forward(self, grid, non_tiles, hidden, ep_starts, internal_obs):
+    def forward(self, grid, non_tiles, hidden, ep_starts, farm_mask, market_mask, internal_obs):
         # No detach because ran under no_grad()
-        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts, internal_obs)
+        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts)
 
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
-        farm_actions, market_actions, log_prob, farm_masks, market_masks = self.compute_actions(farm_logits, market_logits, internal_obs)
+        farm_actions, market_actions, log_prob, farm_masks, market_masks = self.compute_actions(farm_logits, market_logits, farm_mask, market_mask, internal_obs)
         # dist = Categorical(logits = logits)
         # action = dist.sample()
         # log_prob = dist.log_prob(action)
@@ -148,7 +148,7 @@ class ActorCritic(nn.Module):
 
         return farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, hidden
 
-    def evaluate(self, grid, non_tiles, farm_actions, market_actions, farm_masks, market_masks, hiddens, ep_starts):
+    def evaluate(self, grid, non_tiles, hiddens, farm_actions, market_actions, farm_masks, market_masks, ep_starts):
         hidden = hiddens[0]
         lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
         
