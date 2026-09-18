@@ -50,8 +50,10 @@ def setup_non_tile_observation(obs):
     obs = obs['observation']
     player_num = obs["player"]
     market_curr_inven = obs['market']['inventory']
-    market_inventory = [(market_curr_inven[i] - 10000) / list_of_market_deviation[i] for i in list_of_market_deviation]
-    market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_inventory = [(market_curr_inven[inven] - 10000) / list_of_market_deviation[list_of_all_sellable_resources.index(inven) ] for inven in market_curr_inven]
+    # market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_prices = [obs['market']['prices'][key]/list_of_original_market_prices_resources_sell[list_of_all_sellable_resources.index(key)] for key in obs['market']['prices'].keys()]
+
 
     def encode_inventory(inv, max_inv, resource_arr):
         if max_inv == 0:
