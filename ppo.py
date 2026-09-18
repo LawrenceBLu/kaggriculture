@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from models import ActorCritic
 from copy import deepcopy
-from kaggyculture import invalid_action
+from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs
 from action_space import farmhand_action_space, market_action_space
 
 
@@ -13,7 +13,8 @@ class ReplayBuffer():
   def __init__(self):
     self.state_grid = []
     self.state_non_tiles = []
-    self.actions = []
+    self.farm_actions = []
+    self.market_actions = []
     self.rewards = []
     self.dones = []
     self.state_values = []
@@ -21,11 +22,15 @@ class ReplayBuffer():
     self.lstm_hidden = []
     self.advantages = []
     self.returns = []
+    self.farm_masks = []
+    self.market_masks = []
+    self.internal_obs = {}
 
   def clear(self):
     del self.state_grid[:]
     del self.state_non_tiles[:]
-    del self.actions[:]
+    del self.farm_actions[:]
+    del self.market_actions[:]
     del self.rewards[:]
     del self.dones[:]
     del self.state_values[:]
@@ -33,16 +38,26 @@ class ReplayBuffer():
     del self.lstm_hidden[:]
     del self.advantages[:]
     del self.returns[:]
+    del self.farm_masks[:]
+    del self.market_masks[:]
+    del internal_obs
 
-  def store(self, state, action , state_value, log_prob, reward, done):
+  def store(self, state, farm_actions, market_actions, reward, done, state_value, log_prob, lstm_hidden, farm_masks, market_masks):
     self.states.append(state)
-    self.actions.append(action)
-    self.state_values.append(state_value)
-    self.log_probs.append(log_prob)
+    self.farm_actions.append(farm_actions)
+    self.market_actions.append(market_actions)
     self.rewards.append(reward)
     self.dones.append(done)
+    self.state_values.append(state_value)
+    self.log_probs.append(log_prob)
+    self.lstm_hidden.append(lstm_hidden)
+    self.farm_masks.append(farm_masks)
+    self.market_masks.append(market_masks)
 
-
+  def get_batch(self, batch_size):
+    batch_data = ReplayBuffer()
+    batch_data.
+    
   def compute_gae(self, next_value, next_done, gae_lambda, gamma):
       '''
       gae_lambda: future discount
@@ -70,9 +85,8 @@ class ReplayBuffer():
       self.returns = returns  
   
 
-
 class PPO():
-  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, value_c, entr_c, gae_lambda, gamma, device):
+  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
     self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
     self.env = env
@@ -89,11 +103,15 @@ class PPO():
     self.value_c = value_c
     self.entr_c = entr_c
     self.epochs = epochs
+    self.batch_size = batch_size
     self.gae_lambda = gae_lambda
     self.gamma = gamma
 
     self.last_obs = None
     self.last_hidden = None
+
+    self.all_farm_actions = farmhand_action_space()
+    self.all_market_actions = market_action_space()
 
     self.init_env()
 
@@ -102,17 +120,36 @@ class PPO():
     self.last_obs = state
     self.last_ep_starts = [True]
 
-  def process_obs(self, last_obs):
-    # Add function to split up obs into grid and non_tiles
+  def action_idx_to_string(self, farmer_action_idx, market_action_idx):
+    action_dict = {}
+    action_dict['farmer'] = [self.all_farm_actions[self.farmer_action_idx[0]]]
     
+    farmhand_actions = []
+    for farmhand_action in farmer_action_idx:
+      farmhand_actions.append([self.all_farm_actions[farmhand_action]]) 
+      
+    action_dict['hands'] = farmhand_actions
+    
+    market_actions = []
+    for market_action in market_action_idx:
+      if market_action != "PASS": market_actions.append([self.all_market_actions[market_action]])
+    
+    action_dict['market'] = market_actions
+    
+    return action_dict
 
-    all_farm_actions = farmhand_action_space()
-    all_market_actions = market_action_space()
-    farm_mask = list(map(lambda x: invalid_action(last_obs, x), all_farm_actions))
-    market_mask = list(map(lambda x: invalid_action(last_obs, x), all_market_actions))
+  def process_obs(self, obs):
+    # Add function to split up obs into grid and non_tiles
+    grid = setup_tile_obs(obs)
+    non_tiles = setup_non_tile_observation(obs)
 
-    return grid, non_tiles, farm_mask, market_mask
+    return grid, non_tiles
 
+  def create_masks(self, obs):
+    farm_mask = list(map(lambda x: invalid_action(obs, x), self.all_farm_actions))
+    market_mask = list(map(lambda x: invalid_action(obs, x), self.all_market_actions))
+
+    return farm_mask, market_mask
 
   def collect_rollout(self, n_rollout_steps):
     n_steps = 0
@@ -121,31 +158,36 @@ class PPO():
 
     while n_steps < n_rollout_steps:
       with torch.no_grad():
-        grid, non_tiles, farm_mask, market_mask = self.process_obs(self.last_obs)
+        grid, non_tiles = self.process_obs(self.last_obs)
+        farm_mask, market_mask = self.create_masks(self.last_obs)
         grid = torch.tensor(grid, device=self.device)
         non_tiles = torch.tensor(non_tiles, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
-        action, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts)
+        farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
 
-      new_state, reward, terminated, truncated, info = self.env.step(action.item())
+      action = process_action(farm_actions, market_actions)
+      new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
       if terminated == False and truncated == True and info.get("terminal_observation") is not None:
-        terminal_grid, terminal_non_tiles = self.process_state(info.get("terminal_observation"))
+        terminal_grid, terminal_non_tiles = self.process_obs(info.get("terminal_observation"))
         with torch.no_grad():
           ep_starts = torch.tensor([False], dtype=torch.float32, device=self.device)
           terminal_value = self.model.predict_values(terminal_grid, terminal_non_tiles, lstm_hidden, ep_starts)
         reward += self.gamma * terminal_value
 
       self.replay_buffer.store(
-        self.last_obs,
-        action,
-        reward,
-        self.last_ep_starts,
-        state_value,
-        log_prob,
-        self.last_hidden
+        state = self.last_obs,
+        farm_actions = farm_actions,
+        market_actions = market_actions,
+        reward = reward,
+        done = self.last_ep_starts,
+        state_value = state_value,
+        log_prob = log_prob,
+        lstm_hidden = self.last_hidden,
+        farm_masks = farm_masks,
+        market_masks = market_masks
       )
 
       self.last_obs = new_state
@@ -153,7 +195,7 @@ class PPO():
       self.last_hidden = lstm_hidden
 
       with torch.no_grad():
-        grid, non_tiles = self.process_state(new_state)
+        grid, non_tiles = self.process_obs(new_state)
         done = terminated or truncated
         ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
         state_value = self.model.predict_values(grid, non_tiles, lstm_hidden, ep_starts)
@@ -162,27 +204,28 @@ class PPO():
 
 
   def train(self):
-    old_states = torch.squeeze(torch.stack(self.replay_buffer.states, dim=0)).detach().to(self.device)
-    old_actions = torch.squeeze(torch.stack(self.replay_buffer.actions, dim=0)).detach().to(self.device)
-    old_log_probs = torch.squeeze(torch.stack(self.replay_buffer.log_probs, dim=0)).detach().to(self.device)
-
-    advantage = self.replay_buffer.advantages
-    returns = self.replay_buffer.returns
-
     for _ in range(self.epochs):
-      log_probs, entropy, state_values = self.model.evaluate(old_states, old_actions)
+      for batch_data in self.replay_buffer.get_batches(self.batch_size):
+        grids, non_tiles = zip(*[self.process_obs(obs) for obs in batch_data.states])
+        grids, non_tiles = list(grids), list(non_tiles)
+        old_grid = torch.squeeze(torch.stack(grids, dim=0)).detach().to(self.device)
+        old_non_tiles = torch.squeeze(torch.stack(non_tiles, dim=0)).detach().to(self.device)
+        old_farm_actions = torch.squeeze(torch.stack(batch_data.farm_actions, dim=0)).detach().to(self.device)
+        old_market_actions = torch.squeeze(torch.stack(batch_data.market_actions, dim=0)).detach().to(self.device)
+        old_log_probs = torch.squeeze(torch.stack(batch_data.log_probs, dim=0)).detach().to(self.device)
 
-      ratio = torch.exp(log_probs - old_log_probs)
+        log_probs, entropy, state_values = self.model.evaluate(old_grid, old_non_tiles, batch_data.lstm_hiddens, old_farm_actions, old_market_actions)
 
-      surr1 = ratio * advantage
-      surr2 = torch.clamp(ratio, 1-self.eps, 1+self.eps) * advantage
+        ratio = torch.exp(log_probs - old_log_probs)
 
-      loss = -torch.min(surr1, surr2) + self.value_c * self.mse(state_values, returns) - self.entr_c * entropy
+        surr1 = ratio * batch_data.advantage
+        surr2 = torch.clamp(ratio, 1-self.eps, 1+self.eps) * batch_data.advantage
 
-      self.optim.zero_grad()
-      loss.mean().backward()
-      self.optim.step()
+        loss = -torch.min(surr1, surr2) + self.value_c * self.mse(state_values, batch_data.returns) - self.entr_c * entropy
+
+        self.optim.zero_grad()
+        loss.mean().backward()
+        self.optim.step()
 
     self.old_model.load_state_dict(self.model.state_dict())
-
     self.replay_buffer.clear()

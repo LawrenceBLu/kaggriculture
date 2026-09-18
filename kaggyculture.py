@@ -50,8 +50,10 @@ def setup_non_tile_observation(obs):
     obs = obs['observation']
     player_num = obs["player"]
     market_curr_inven = obs['market']['inventory']
-    market_inventory = [(market_curr_inven[i] - 10000) / list_of_market_deviation[i] for i in list_of_market_deviation]
-    market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_inventory = [(market_curr_inven[inven] - 10000) / list_of_market_deviation[list_of_all_sellable_resources.index(inven) ] for inven in market_curr_inven]
+    # market_prices = [i for i in obs['market']['prices'].values() / list_of_original_market_prices_resources_sell[i] for i in list_of_original_market_prices_resources_sell]
+    market_prices = [obs['market']['prices'][key]/list_of_original_market_prices_resources_sell[list_of_all_sellable_resources.index(key)] for key in obs['market']['prices'].keys()]
+
 
     def encode_inventory(inv, max_inv, resource_arr):
         if max_inv == 0:
@@ -137,7 +139,8 @@ def setup_tile_obs(obs):
 
 def invalid_action(obs, action, farmhand_index=None):
     invalid, valid = False, True
-    type_action = action[0]
+    if type(action) in [list, tuple]: type_action = action[0]
+    else: type_action = action
     obs = obs["observation"]
     player_num = obs["player"]
     money = obs['farms'][player_num]['money']
@@ -152,6 +155,8 @@ def invalid_action(obs, action, farmhand_index=None):
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
+
+    if tile == "LOCKED": return invalid
 
     if len(action) >= 2:
         item = action[1]
@@ -172,7 +177,7 @@ def invalid_action(obs, action, farmhand_index=None):
 
         if isinstance(tile, dict) and tile.get("kind") in ["COOP", "PASTURE"]:
             if item in list_of_all_animals:
-                if tile.get("animal") is not None: return invalid
+                if tile.get("animal") is None: return invalid
                 if tile["kind"] == "COOP" and item != "GOOSE": return invalid
                 if tile["kind"] == "PASTURE" and item == "GOOSE": return invalid
             elif not shed_adjacent:
@@ -203,9 +208,8 @@ def invalid_action(obs, action, farmhand_index=None):
 
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
-        if tile.get("yield_units", 0) <= 0: return invalid
-
         if tile.get("kind") == "PLANT":
+            if tile.get("yield_units", 0) <= 0: return invalid
             first_yield_day = list_of_first_yield_day_crops[list_of_all_crops.index(tile.get("crop"))]
             if obs["day"] - tile["planted_day"] < first_yield_day:
                 return invalid
@@ -230,16 +234,17 @@ def invalid_action(obs, action, farmhand_index=None):
     if type_action == "COLLECT_FERTILIZER":
         if not isinstance(tile, dict): return invalid
         if tile.get("animal") is None: return invalid
-        if not tile.get("fertilizer_available", False): return invalid
+        if not tile.get("fertilizer_available"): return invalid
 
     if type_action == "CARE":
         if not isinstance(tile, dict): return invalid
         if tile.get("animal") is None: return invalid
-        if tile.get("cared_today", False): return invalid
+        if tile.get("cared_today") is None or tile.get("cared_today") == True: return invalid
 
     if type_action == "DIG":
         if tile is None: return invalid
         if tile == "LOCKED": return invalid
+        if not (tile.get("kind") in ("PLANT", "WEED") or (tile.get("kind") in ("COOP", "PASTURE") and tile.get("animal") is None)): return invalid
         if isinstance(tile, dict) and tile.get("animal") is not None: return invalid
 
     if type_action == "BUY_SEED":
@@ -254,7 +259,6 @@ def invalid_action(obs, action, farmhand_index=None):
         if len(action) < 3: return invalid
         if num <= 0: return invalid
         if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        if sum(shed.values()) >= 100: return invalid
         buy_price = obs['market']['prices'][item]
         if money < buy_price * action[2]: return invalid
 
@@ -262,7 +266,6 @@ def invalid_action(obs, action, farmhand_index=None):
         if len(action) < 3: return invalid
         if num <= 0: return invalid
         if item not in list_of_all_animals: return invalid
-        if sum(shed.values()) >= 100: return invalid
         if money < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * action[2]: return invalid
 
     if type_action == "SELL":
