@@ -141,7 +141,7 @@ def invalid_action(obs, action, farmhand_index=None):
     invalid, valid = False, True
     if type(action) in [list, tuple]: type_action = action[0]
     else: type_action = action
-    obs = obs["observation"]
+    # obs = obs["observation"]
     player_num = obs["player"]
     money = obs['farms'][player_num]['money']
     shed = obs['private']['shed']
@@ -285,3 +285,61 @@ def invalid_action(obs, action, farmhand_index=None):
         if money < land_cost: return invalid
 
     return valid
+
+def update_internal_obs(internal_obs, num_hands):
+    all_pos = []
+    obs = internal_obs
+    player_num = obs["player"]
+    x, y = obs["farms"][player_num]["farmer"]
+    all_pos.append((x,y))
+    for i in range(num_hands):
+        x, y = obs["farms"][player_num]["hands"][i]
+        all_pos.append((x,y))
+
+    internal_obs["all_pos"] = all_pos
+    # internal_obs["seeds"] = obs["private"]["seeds"]
+    # internal_obs["balance"] = obs["farms"][player_num]["money"]
+
+
+def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=False):
+    player_num = internal_obs["player"]
+    if is_farm == True:
+        # Update mask if on same tile as previous
+        if index > 0:
+            past_pos = set(internal_obs["all_pos"][:index])
+            if internal_obs["all_pos"][index] in past_pos:
+                mask[4:] = [False] * len(mask[4:])
+                return mask
+
+        # Update internal_obs player inventory if farmer plants seeds
+        if "PLANT" in action:
+            item = action[1]
+            internal_obs["private"]["seeds"][item] -= 1
+            mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
+            return mask
+    else:
+        action_idx, action_str = action
+        if index == 0:
+            internal_obs["past_market_actions"] = set()
+
+        # Update money after buying something
+        if type(action_str) == tuple and "BUY" in action_str[0]:
+            internal_obs["farms"][player_num]["money"] -= internal_obs["market"]["prices"][action_str[1]] * action_str[2]
+            mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
+
+        # No duplicate action
+        if index > 0:
+            for act in internal_obs["past_market_actions"]:
+                if "BUY_SEED" in act[1]:
+                    mask[act[0]:act[0]+5] = [False] * 5
+                elif "BUY_PRODUCT" in act[1]:
+                    mask[act[0]:act[0]+3] = [False] * 3
+                elif "BUY_ANIMAL" in act[1]:
+                    mask[act[0]:act[0]+2] = [False] * 2
+                
+        internal_obs["past_market_actions"].add((action_idx, action_str))
+
+        return mask
+        
+    return mask
+        
