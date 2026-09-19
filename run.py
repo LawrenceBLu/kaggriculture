@@ -14,9 +14,9 @@ def run():
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
-  farm_action_dim = None
+  farm_action_dim = 111
   num_hands = 5
-  market_action_dim = None
+  market_action_dim = 41
   num_orders = 10
   batch_size = 360
   lr = 1e-4
