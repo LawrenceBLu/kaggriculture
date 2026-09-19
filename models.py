@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchrl.modules import MaskedCategorical
-from kaggyculture import update_mask
+from kaggyculture import update_mask, invalid_action
+from action_space import market_action_space, farmhand_action_space
 
 #heehee
 
@@ -65,8 +66,11 @@ class ActorCritic(nn.Module):
         return lstm_out, hidden
 
     def compute_actions(self, farm_logits, market_logits, farm_mask, market_mask, internal_obs):
-        hands_vec = farm_logits.reshape(self.num_hands+1, -1)
+        farmer_vec = farm_logits.reshape(self.num_hands+1, -1)
         market_vec = market_logits.reshape(self.num_orders, -1)
+
+        all_farm_actions = farmhand_action_space()
+        all_market_actions = market_action_space()
 
         farm_actions = []
         market_actions = []
@@ -76,20 +80,26 @@ class ActorCritic(nn.Module):
         log_probs = []
         
 
-        for hands_logits in hands_vec:
+        for farmer_index, farmer_logits in enumerate(farmer_vec):
             farm_masks.append(farm_mask)
-            farm_dist = MaskedCategorical(logits=hands_logits, mask=farm_mask)
-            farm_mask = update_mask(farm_mask, internal_obs, is_farm=True)
+            farm_dist = MaskedCategorical(logits=farmer_logits, mask=farm_mask)
             farm_action = farm_dist.sample()
+            farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index-1), all_farm_actions.values()))
+            farm_action_str = all_farm_actions[farm_action]
+            farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
+
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)
             log_probs.append(log_prob)
 
-        for market_logits in market_vec:
+        for market_index, market_logits in enumerate(market_vec):
             market_masks.append(market_mask)
             market_dist = MaskedCategorical(logits=market_logits, mask=market_mask)
-            market_mask = update_mask(market_mask, internal_obs)
             market_action = market_dist.sample()
+            market_mask = list(map(lambda x: invalid_action(internal_obs, x), all_market_actions.values()))
+            market_action_str = all_market_actions[market_action]
+            market_mask = update_mask(market_mask, internal_obs, (market_action, market_action_str), all_market_actions, index=market_index)
+
             log_prob = market_dist.log_prob(market_action)
             market_actions.append(market_action)
             log_probs.append(log_prob)
