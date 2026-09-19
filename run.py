@@ -14,7 +14,7 @@ def run():
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
-  farm_action_dim = 111
+  farm_action_dim = 113
   num_hands = 5
   market_action_dim = 41
   num_orders = 10
