@@ -8,13 +8,17 @@ from ppo import PPO
 def run():
   env = make("kaggriculture", debug=True)
 
-  grid_size = None
+  grid_size = 11
   cnn_dim = 128
-  non_tile_len = None
+  non_tile_len = 9
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
-  action_dim = None
+  farm_action_dim = None
+  num_hands = 5
+  market_action_dim = None
+  num_orders = 10
+  batch_size = 360
   lr = 1e-4
   eps = 0.2
   epochs = 2
@@ -24,7 +28,7 @@ def run():
   gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   
-  ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, value_c, entr_c, gae_lambda, gamma, device)
+  ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
   max_steps = 1000
   num_iterations = 2
