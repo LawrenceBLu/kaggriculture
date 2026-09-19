@@ -98,6 +98,7 @@ def setup_tile_obs(obs):
         for y in range(10):
             for x in range(10):
                 tile = obs['farms'][player_num]['tiles'][y][x]
+                print("TILE:", tile)
                 feature_vector = []
                 if type(tile) == str or tile is None:
                     if option == None and tile == None:
