@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from models import ActorCritic
 from copy import deepcopy
-from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs
+from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs, update_internal_obs
 from action_space import farmhand_action_space, market_action_space
 
 
@@ -113,12 +113,13 @@ class PPO():
     self.batch_size = batch_size
     self.gae_lambda = gae_lambda
     self.gamma = gamma
+    self.num_hands = num_hands
 
     self.last_obs = None
     self.last_hidden = None
 
-    self.all_farm_actions = farmhand_action_space()
-    self.all_market_actions = market_action_space()
+    self.farmer_action_space = farmhand_action_space()
+    self.market_action_space = market_action_space()
 
     self.init_env()
 
@@ -129,7 +130,7 @@ class PPO():
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
-    action_dict['farmer'] = [self.farmer_action_space(self.farmer_action_idx[0])]
+    action_dict['farmer'] = [self.farmer_action_space[self.farmer_action_idx[0]]]
     
     farmhand_actions = []
     if len(farmer_action_idx > 0):
@@ -150,12 +151,16 @@ class PPO():
     # Add function to split up obs into grid and non_tiles
     grid = setup_tile_obs(obs)
     non_tiles = setup_non_tile_observation(obs)
+    self.replay_buffer.internal_obs = deepcopy(obs["observation"])
+    update_internal_obs(self.replay_buffer.internal_obs)
 
     return grid, non_tiles
 
   def create_masks(self, obs):
-    farm_mask = list(map(lambda x: invalid_action(obs, x), self.all_farm_actions))
-    market_mask = list(map(lambda x: invalid_action(obs, x), self.all_market_actions))
+    # First farm_mask is for farmer only
+
+    farm_mask = list(map(lambda x: invalid_action(obs["observation"], x), self.farmer_action_space.values()))
+    market_mask = list(map(lambda x: invalid_action(obs["observation"], x), self.market_action_space.values()))
 
     return farm_mask, market_mask
 
@@ -168,6 +173,7 @@ class PPO():
       with torch.no_grad():
         grid, non_tiles = self.process_obs(self.last_obs)
         farm_mask, market_mask = self.create_masks(self.last_obs)
+
         grid = torch.tensor(grid, device=self.device)
         non_tiles = torch.tensor(non_tiles, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
