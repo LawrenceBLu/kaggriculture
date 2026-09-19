@@ -11,8 +11,7 @@ from action_space import farmhand_action_space, market_action_space
 
 class ReplayBuffer():
   def __init__(self):
-    self.state_grid = []
-    self.state_non_tiles = []
+    self.states = []
     self.farm_actions = []
     self.market_actions = []
     self.rewards = []
@@ -27,8 +26,7 @@ class ReplayBuffer():
     self.internal_obs = {}
 
   def clear(self):
-    del self.state_grid[:]
-    del self.state_non_tiles[:]
+    del self.states[:]
     del self.farm_actions[:]
     del self.market_actions[:]
     del self.rewards[:]
@@ -56,7 +54,16 @@ class ReplayBuffer():
 
   def get_batch(self, batch_size):
     batch_data = ReplayBuffer()
-    batch_data.
+    for i in range(0, len(self.states), batch_size):
+      batch_data.states = self.states[i:i+batch_size]
+      batch_data.farm_actions = self.farm_actions[i:i+batch_size]
+      batch_data.market_actions = self.market_actions[i:i+batch_size]
+      batch_data.log_probs = self.log_probs[i:i+batch_size]
+      batch_data.lstm_hidden = self.lstm_hidden[i:i+batch_size]
+      batch_data.advantage = self.advantages[i:i+batch_size]
+      batch_data.returns = self.advantages[i:i+batch_size]
+
+      yield batch_data
     
   def compute_gae(self, next_value, next_done, gae_lambda, gamma):
       '''
@@ -122,17 +129,18 @@ class PPO():
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
-    action_dict['farmer'] = [self.all_farm_actions[self.farmer_action_idx[0]]]
+    action_dict['farmer'] = [self.farmer_action_space(self.farmer_action_idx[0])]
     
     farmhand_actions = []
-    for farmhand_action in farmer_action_idx:
-      farmhand_actions.append([self.all_farm_actions[farmhand_action]]) 
+    if len(farmer_action_idx > 0):
+      for farmhand_action in farmer_action_idx[1:]:
+        farmhand_actions.append([self.farmer_action_space[farmhand_action]]) 
       
-    action_dict['hands'] = farmhand_actions
+      action_dict['hands'] = farmhand_actions
     
     market_actions = []
     for market_action in market_action_idx:
-      if market_action != "PASS": market_actions.append([self.all_market_actions[market_action]])
+      if self.market_action_space[market_action] != "PASS": market_actions.append([self.market_action_space[market_action]])
     
     action_dict['market'] = market_actions
     
@@ -166,7 +174,7 @@ class PPO():
         farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
 
-      action = process_action(farm_actions, market_actions)
+      action = self.action_idx_to_string(farm_actions, market_actions)
       new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
