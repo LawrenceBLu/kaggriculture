@@ -93,9 +93,9 @@ class ReplayBuffer():
   
 
 class PPO():
-  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
+  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
-    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
+    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders).to(device)
     self.env = env
     
     self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
@@ -103,7 +103,7 @@ class PPO():
     # self.old_model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
     # self.old_model.load_state_dict(self.model.state_dict())
     self.mse = nn.MSELoss()
-    self.hidden = (torch.zeros(lstm_layers, 1, lstm_dim, devic=device), torch.zeros(lstm_layers, 1, lstm_dim, devic=device))
+    self.hidden = (torch.zeros(lstm_layers, 1, lstm_dim, device=device), torch.zeros(lstm_layers, 1, lstm_dim, device=device))
 
     self.eps = eps
     self.device = device
