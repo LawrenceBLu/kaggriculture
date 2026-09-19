@@ -44,7 +44,7 @@ def farmhand_action_space():
         actions[t] = ct
         ct += 1
     
-    remaining = ["HARVEST", "FERTILIZE","BUILD_COOP","BUILD_PASTURE","FEED","COLLECT_FERTILIZER","CARE","DIG","PASS"]
+    remaining = ["PLANT", "WATER", "HARVEST", "FERTILIZE","BUILD_COOP","BUILD_PASTURE","FEED","COLLECT_FERTILIZER","CARE","DIG","PASS"]
     for i in range(len(remaining)):
         actions[remaining[i]] = ct     
         ct += 1
