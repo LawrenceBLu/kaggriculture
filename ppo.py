@@ -122,17 +122,18 @@ class PPO():
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
-    action_dict['farmer'] = [self.all_farm_actions[self.farmer_action_idx[0]]]
+    action_dict['farmer'] = [self.farmer_action_space(self.farmer_action_idx[0])]
     
     farmhand_actions = []
-    for farmhand_action in farmer_action_idx:
-      farmhand_actions.append([self.all_farm_actions[farmhand_action]]) 
+    if len(farmer_action_idx > 0):
+      for farmhand_action in farmer_action_idx[1:]:
+        farmhand_actions.append([self.farmer_action_space[farmhand_action]]) 
       
-    action_dict['hands'] = farmhand_actions
+      action_dict['hands'] = farmhand_actions
     
     market_actions = []
     for market_action in market_action_idx:
-      if market_action != "PASS": market_actions.append([self.all_market_actions[market_action]])
+      if self.market_action_space[market_action] != "PASS": market_actions.append([self.market_action_space[market_action]])
     
     action_dict['market'] = market_actions
     
