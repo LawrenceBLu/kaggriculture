@@ -44,7 +44,7 @@ class ActorCritic(nn.Module):
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
         # FINISH handling lstm state resets
         grid_state = self.cnn(grid)
-        state = torch.cat([torch.squeeze(grid_state), non_tiles], dim=-1)
+        state = torch.cat([grid_state, non_tiles.unsqueeze(0)], dim=-1)
         x = self.pre_lstm(state)
 
         if torch.all(ep_starts == 0.0):
