@@ -38,7 +38,7 @@ class ReplayBuffer():
     del self.returns[:]
     del self.farm_masks[:]
     del self.market_masks[:]
-    del internal_obs
+    self.internal_obs = {}
 
   def store(self, state, farm_actions, market_actions, reward, done, state_value, log_prob, lstm_hidden, farm_masks, market_masks):
     self.states.append(state)
@@ -103,7 +103,7 @@ class PPO():
     # self.old_model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
     # self.old_model.load_state_dict(self.model.state_dict())
     self.mse = nn.MSELoss()
-    self.hidden = (torch.zeros(lstm_layers, 1, lstm_dim, device=device), torch.zeros(lstm_layers, 1, lstm_dim, device=device))
+    self.last_hidden = (torch.zeros(lstm_layers, 1, lstm_dim, device=device), torch.zeros(lstm_layers, 1, lstm_dim, device=device))
 
     self.eps = eps
     self.device = device
@@ -113,10 +113,9 @@ class PPO():
     self.batch_size = batch_size
     self.gae_lambda = gae_lambda
     self.gamma = gamma
-    self.num_hands = num_hands
+    self.steps = 0
 
     self.last_obs = None
-    self.last_hidden = None
 
     self.farmer_action_space = farmhand_action_space()
     self.market_action_space = market_action_space()
@@ -128,24 +127,36 @@ class PPO():
     self.last_obs = state
     self.last_ep_starts = [True]
 
+  def step(self, action):
+    if self.steps == 720:
+      obs, _ = self.env.reset()
+      self.steps = 0
+      return obs, False
+    obs, _ = self.env.step(action)
+    self.steps += 1
+    if self.steps == 719:
+      return obs, True
+    
+    return obs, False
+
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
-    action_dict['farmer'] = [self.farmer_action_space[self.farmer_action_idx[0]]]
+    action_dict['farmer'] = [self.farmer_action_space[int(farmer_action_idx[0])]]
     
     farmhand_actions = []
-    if len(farmer_action_idx > 0):
+    if len(farmer_action_idx) > 0:
       for farmhand_action in farmer_action_idx[1:]:
-        farmhand_actions.append([self.farmer_action_space[farmhand_action]]) 
+        farmhand_actions.append([self.farmer_action_space[int(farmhand_action)]]) 
       
       action_dict['hands'] = farmhand_actions
     
     market_actions = []
     for market_action in market_action_idx:
-      if self.market_action_space[market_action] != "PASS": market_actions.append([self.market_action_space[market_action]])
+      if self.market_action_space[int(market_action)] != "PASS": market_actions.append([self.market_action_space[int(market_action)]])
     
     action_dict['market'] = market_actions
     
-    return action_dict
+    return [action_dict]
 
   def process_obs(self, obs):
     # Add function to split up obs into grid and non_tiles
@@ -165,6 +176,7 @@ class PPO():
     return farm_mask, market_mask
 
   def collect_rollout(self, n_rollout_steps):
+    print("COLLECTING ROLLOUT")
     n_steps = 0
     self.replay_buffer.clear()
     lstm_hidden = deepcopy(self.last_hidden)
@@ -174,28 +186,35 @@ class PPO():
         grid, non_tiles = self.process_obs(self.last_obs)
         farm_mask, market_mask = self.create_masks(self.last_obs)
 
-        grid = torch.tensor(grid, device=self.device)
-        non_tiles = torch.tensor(non_tiles, device=self.device)
+        print("STATE", self.last_obs)
+
+        grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
+        non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
+        print("PRE GRID", grid.shape)
+        print("PRE NON_TILES", non_tiles.shape)
+        
         farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
 
       action = self.action_idx_to_string(farm_actions, market_actions)
-      new_state, reward, terminated, truncated, info = self.env.step(action)
+      action.extend([{"market":[], "farmer": ["PASS"]}])
+      new_state, done = self.step(action)
+      # new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
-      if terminated == False and truncated == True and info.get("terminal_observation") is not None:
-        terminal_grid, terminal_non_tiles = self.process_obs(info.get("terminal_observation"))
-        with torch.no_grad():
-          ep_starts = torch.tensor([False], dtype=torch.float32, device=self.device)
-          terminal_value = self.model.predict_values(terminal_grid, terminal_non_tiles, lstm_hidden, ep_starts)
-        reward += self.gamma * terminal_value
+      # if terminated == False and truncated == True and info.get("terminal_observation") is not None:
+      #   terminal_grid, terminal_non_tiles = self.process_obs(info.get("terminal_observation"))
+      #   with torch.no_grad():
+      #     ep_starts = torch.tensor([False], dtype=torch.float32, device=self.device)
+      #     terminal_value = self.model.predict_values(terminal_grid, terminal_non_tiles, lstm_hidden, ep_starts)
+      #   reward += self.gamma * terminal_value
 
       self.replay_buffer.store(
         state = self.last_obs,
         farm_actions = farm_actions,
         market_actions = market_actions,
-        reward = reward,
+        reward = 0,
         done = self.last_ep_starts,
         state_value = state_value,
         log_prob = log_prob,
@@ -205,19 +224,26 @@ class PPO():
       )
 
       self.last_obs = new_state
-      self.last_ep_starts = terminated or truncated
+      self.last_ep_starts = done
       self.last_hidden = lstm_hidden
 
-      with torch.no_grad():
-        grid, non_tiles = self.process_obs(new_state)
-        done = terminated or truncated
-        ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
-        state_value = self.model.predict_values(grid, non_tiles, lstm_hidden, ep_starts)
+    with torch.no_grad():
+      grid, non_tiles = self.process_obs(new_state)
+      grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
+      non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
+      ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
+      print("LAST NEW STATE", new_state)
+      print("LAST NON TILES", non_tiles)
+      print("GRID", grid.shape)
+      print("NON_TILES", non_tiles.shape)
+      state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)
 
-      self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma)
+    self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma)
+    print("FINISHED ROLLOUT")
 
 
   def train(self):
+    print("START TRAINING")
     for _ in range(self.epochs):
       for batch_data in self.replay_buffer.get_batches(self.batch_size):
         grids, non_tiles = zip(*[self.process_obs(obs) for obs in batch_data.states])
@@ -228,7 +254,7 @@ class PPO():
         old_market_actions = torch.squeeze(torch.stack(batch_data.market_actions, dim=0)).detach().to(self.device)
         old_log_probs = torch.squeeze(torch.stack(batch_data.log_probs, dim=0)).detach().to(self.device)
 
-        log_probs, entropy, state_values = self.model.evaluate(old_grid, old_non_tiles, batch_data.lstm_hiddens, old_farm_actions, old_market_actions)
+        log_probs, entropy, state_values = self.model.evaluate(old_grid, old_non_tiles, batch_data.lstm_hiddens[0], old_farm_actions, old_market_actions)
 
         ratio = torch.exp(log_probs - old_log_probs)
 
@@ -243,3 +269,4 @@ class PPO():
 
     self.old_model.load_state_dict(self.model.state_dict())
     self.replay_buffer.clear()
+    print("DONE")

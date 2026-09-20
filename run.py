@@ -2,15 +2,14 @@ from kaggle_environments import make
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Categorical
 from ppo import PPO
 
 def run():
   env = make("kaggriculture", debug=True)
 
-  grid_size = 11
+  grid_size = 26
   cnn_dim = 128
-  non_tile_len = 9
+  non_tile_len = 52
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
@@ -30,7 +29,7 @@ def run():
   
   ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
-  max_steps = 1000
+  max_steps = 600
   num_iterations = 2
 
 
