@@ -71,9 +71,10 @@ def market_action_space():
             actions[tuple(("BUY_SEED", list_of_all_crops[i], a+1))] = ct
             ct += 1
     
-    for i in range(4):
+    for i in range(1):
         for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, 3):
-            actions[tuple(("BUY_PRODUCT", list_of_all_products[i], a+1))] = ct
+            actions[tuple(("BUY_PRODUCT", "WHEAT", a+1))] = ct
+            actions[tuple(("BUY_PRODUCT", "FERTILIZER", a+1))] = ct
             ct += 1
             
     for i in range(3):

@@ -1,6 +1,8 @@
 from kaggle_environments import make
 import numpy as np
 from torch.distributions.categorical import Categorical
+from global_vars import MARKET_SEED_PRICES
+import torch
 
 # HELPFUL DICTIONARIES
 list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
@@ -20,6 +22,8 @@ list_of_max_yield_steps_crops = [96, 72, 264, 384, 240]
 list_of_max_yield_crops = [6, 4, 4, 4, 6]
 list_of_max_yield_animals = [4, 6, 6]
 list_of_max_yield_steps_animals = []
+
+list_of_shop_types = ['BAKERY', "PIZZA SHOP", "BRUNCH SPOT", "YARN STORE", "ICE CREAM SHOP", "PET CAFE", "SMOOTHIE SHOP", "FARMERS MARKET"]
 
 # HELPFUL FUNCTIONS
 def _fib(n):
@@ -66,7 +70,7 @@ def setup_non_tile_observation(obs):
 
     inventory_obs = []
     for inv in obs["private"]["inventories"]:
-        inventory_obs.append(encode_inventory(inv, MAX_INVEN_CAP, list_of_all_sellable_resources))
+        inventory_obs.extend(encode_inventory(inv, MAX_INVEN_CAP, list_of_all_sellable_resources))
 
     money = (obs['farms'][player_num]['money'] - 3000) / 3000
 
@@ -75,53 +79,55 @@ def setup_non_tile_observation(obs):
     cost_of_next_hire = MAX_HIRE_PRICE
     # maybe cumulative sum of hired already?
 
-    def encode_unlocked_shops(unlocked_shops):
-        shops = unlocked_shops[:8] + [None] * (8 - len(unlocked_shops))
-        return [unlocked_shop_one_hot.get(shop, none_one_hot) for shop in shops]    
+    unlocked_shops = [0] * 8
+    for shop in obs['town']['unlocked_shops']:
+        unlocked_shops[list_of_all_shops.index(shop)] += 1
+    unlocked_shops = [shop/8 for shop in unlocked_shops]
         
-    obs_arr = [money, market_inventory, market_prices, shed_inven, seed_inven, inventory_obs, curr_num_hires, curr_num_hires/cost_of_next_hire, encode_unlocked_shops(obs['town']['unlocked_shops'])]
+    obs_arr = [money] + market_inventory + market_prices + shed_inven + seed_inven + inventory_obs + [curr_num_hires] + [curr_num_hires/cost_of_next_hire] + unlocked_shops
     return obs_arr
 
 MAX_UNWATERED_DAYS = 30
 def setup_tile_obs(obs):
     obs = obs['observation']
     player_num = obs["player"]
-    list_of_all_animals_w_none = list_of_all_animals + [None]
-    tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
+    # list_of_all_animals_w_none = list_of_all_animals + [None]
+    # tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
     
-    list_of_layers = []
+    # list_of_layers = []
     
-    for option in tile_options:
-        zero_matrix_copy = np.zeros((10,10))
-        plant_num = 0
-        animal_num = 0
-        for y in range(10):
-            for x in range(10):
-                tile = obs['farms'][player_num]['tiles'][y][x]
-                print("TILE:", tile)
-                feature_vector = []
-                if type(tile) == str or tile is None:
-                    if option == None and tile == None:
-                        zero_matrix_copy[y][x] = 1
-                    elif option == "LOCKED" and tile == 'LOCKED':
-                        zero_matrix_copy[y][x] = 1
-                    elif option == "WEED" and tile == "WEED":
-                        zero_matrix_copy[y][x] = 1
-                else:
-                    if tile['kind'] == "PLANT" and option == list_of_all_crops[plant_num]:
-                        steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
-                        watered_today = int(tile['watered_today'])
-                        consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
-                        yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
-                        max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
-                        fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
-                        feature_vector = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
-                        zero_matrix_copy[y][x] = feature_vector
-                        if x == 9 and y == 9: plant_num += 1
-                    elif (tile['kind'] == 'COOP' or tile['kind'] == 'PASTURE') and option == list_of_all_animals_w_none[animal_num]:
-                        if tile['animal'] == None:
-                            zero_matrix_copy[y][x] = np.zeros(9)
-                            pass
+    zero_matrix_copy = [[0]*10]*10
+    # plant_num = 0
+    # animal_num = 0
+    for y in range(10):
+        for x in range(10):
+            tile = obs['farms'][player_num]['tiles'][y][x]
+            feature_vector = np.zeros(26)
+            if type(tile) == str or tile is None:
+                if tile == None:
+                    feature_vector[0] = 1
+                elif tile == 'LOCKED':
+                    feature_vector[1] = 1
+                elif tile == "WEED":
+                    feature_vector[2] = 1
+            else:
+                if tile['kind'] == "PLANT":
+                    feature_vector[3+list_of_all_crops.index(tile['crop'])] = 1
+                    steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                    watered_today = int(tile['watered_today'])
+                    consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
+                    yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
+                    max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
+                    fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
+                    feature_vector[len(list_of_all_crops)+3:len(list_of_all_crops)+10] = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
+                elif (tile['kind'] == 'COOP' or tile['kind'] == 'PASTURE'):
+                    if tile['kind'] == 'COOP':
+                        feature_vector[len(list_of_all_crops)+10] = 1
+                    elif tile['kind'] == 'PASTURE':
+                        feature_vector[len(list_of_all_crops)+11] = 1
+                    if tile.get("animals", None) is not None:
+                        feature_vector[len(list_of_all_crops)+11+list_of_all_animals.index(tile['animals'])] = 1
+
                         steps_since_placed_norm = (obs['step'] - (tile['placed_day']*24))/720
                         yield_units_animal = tile['yield_units']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
                         fed_today = int(tile['fed_today'])
@@ -129,11 +135,10 @@ def setup_tile_obs(obs):
                         cared_today = int(tile['cared_today'])
                         fertilizer_available = int(tile['fertilizer_available'])
                         pending_care_bonus = tile['pending_care_bonus']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
-                        feature_vector = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
-                        zero_matrix_copy[y][x] = feature_vector
-                        if x == 9 and y == 0: animal_num += 1
-        list_of_layers.append(zero_matrix_copy)
-    return list_of_layers
+                        animal_vector_ind = len(list_of_all_crops)+11+len(list_of_all_animals)
+                        feature_vector[animal_vector_ind:animal_vector_ind+7] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
+            zero_matrix_copy[y][x] = feature_vector
+    return zero_matrix_copy
 
 # action mask
 
@@ -150,8 +155,13 @@ def invalid_action(obs, action, farmhand_index=None):
         x, y = obs['farms'][player_num]['farmer']
         inventory = obs['private']['inventories'][0]
     else:
-        x, y = obs['farms'][player_num]['hands'][farmhand_index]
-        inventory = obs['private']['inventories'][farmhand_index + 1]
+        if farmhand_index < len(obs['farms'][player_num]['hands']):
+            x, y = obs['farms'][player_num]['hands'][farmhand_index]
+            inventory = obs['private']['inventories'][farmhand_index + 1]
+        elif action != "PASS":
+            return invalid
+        else:
+            return valid
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
@@ -286,13 +296,13 @@ def invalid_action(obs, action, farmhand_index=None):
 
     return valid
 
-def update_internal_obs(internal_obs, num_hands):
+def update_internal_obs(internal_obs):
     all_pos = []
     obs = internal_obs
     player_num = obs["player"]
     x, y = obs["farms"][player_num]["farmer"]
     all_pos.append((x,y))
-    for i in range(num_hands):
+    for i in range(len(obs["farms"][player_num]["hands"])):
         x, y = obs["farms"][player_num]["hands"][i]
         all_pos.append((x,y))
 
@@ -307,8 +317,8 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
         # Update mask if on same tile as previous
         if index > 0:
             past_pos = set(internal_obs["all_pos"][:index])
-            if internal_obs["all_pos"][index] in past_pos:
-                mask[4:] = [False] * len(mask[4:])
+            if index < len(internal_obs["all_pos"]) and internal_obs["all_pos"][index] in past_pos:
+                mask[4:-1] = [False] * len(mask[4:-1])
                 return mask
 
         # Update internal_obs player inventory if farmer plants seeds
@@ -323,8 +333,11 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
             internal_obs["past_market_actions"] = set()
 
         # Update money after buying something
-        if type(action_str) == tuple and "BUY" in action_str[0]:
-            internal_obs["farms"][player_num]["money"] -= internal_obs["market"]["prices"][action_str[1]] * action_str[2]
+        if type(action_str) == tuple:
+            if "BUY_PRODUCT" in action_str[0]:
+                internal_obs["farms"][player_num]["money"] -= internal_obs["market"]["prices"][action_str[1]] * action_str[2]
+            else:
+                internal_obs["farms"][player_num]["money"] -= MARKET_SEED_PRICES[action_str[1]] * action_str[2]
             mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
 
         # No duplicate action
@@ -342,4 +355,3 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
         return mask
         
     return mask
-        
