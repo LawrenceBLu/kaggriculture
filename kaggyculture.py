@@ -69,8 +69,13 @@ def setup_non_tile_observation(obs):
     seed_inven = encode_inventory(obs['private']['seeds'], MAX_INVEN_CAP, list_of_all_crops)
 
     inventory_obs = []
+    num_hands = 0
     for inv in obs["private"]["inventories"]:
+        num_hands += 1
         inventory_obs.extend(encode_inventory(inv, MAX_INVEN_CAP, list_of_all_sellable_resources))
+
+    for i in range(num_hands, 5):
+        inventory_obs.extend([0] * len(list_of_all_sellable_resources))
 
     money = (obs['farms'][player_num]['money'] - 3000) / 3000
 
@@ -158,9 +163,9 @@ def invalid_action(obs, action, farmhand_index=None):
         if farmhand_index < len(obs['farms'][player_num]['hands']):
             x, y = obs['farms'][player_num]['hands'][farmhand_index]
             inventory = obs['private']['inventories'][farmhand_index + 1]
-        elif action != "PASS":
+        elif farmhand_index is not None and action != "PASS":
             return invalid
-        else:
+        elif farmhand_index is not None and action == "PASS":
             return valid
 
     tile = obs['farms'][player_num]['tiles'][y][x]
@@ -325,7 +330,7 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
         if "PLANT" in action:
             item = action[1]
             internal_obs["private"]["seeds"][item] -= 1
-            mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
+            mask = list(map(lambda x: invalid_action(internal_obs, x, index), action_space.values()))
             return mask
     else:
         action_idx, action_str = action

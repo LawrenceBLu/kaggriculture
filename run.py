@@ -9,7 +9,7 @@ def run():
 
   grid_size = 26
   cnn_dim = 128
-  non_tile_len = 52
+  non_tile_len = 88
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
