@@ -186,14 +186,10 @@ class PPO():
         grid, non_tiles = self.process_obs(self.last_obs)
         farm_mask, market_mask = self.create_masks(self.last_obs)
 
-        print("STATE", self.last_obs)
-
         grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
         non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
-        print("PRE GRID", grid.shape)
-        print("PRE NON_TILES", non_tiles.shape)
-        
+
         farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
 
@@ -232,10 +228,6 @@ class PPO():
       grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
       non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
       ep_starts = torch.tensor(done, dtype=torch.float32, device=self.device)
-      print("LAST NEW STATE", new_state)
-      print("LAST NON TILES", non_tiles)
-      print("GRID", grid.shape)
-      print("NON_TILES", non_tiles.shape)
       state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)
 
     self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma)
