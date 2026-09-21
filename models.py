@@ -80,7 +80,7 @@ class ActorCritic(nn.Module):
         market_masks = []
         log_probs = []
         
-
+        print("STATE", internal_obs)
         for farmer_index, farmer_logits in enumerate(farmer_vec):
             farm_masks.append(farm_mask)
             farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask))
@@ -89,6 +89,7 @@ class ActorCritic(nn.Module):
                 farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
                 farm_action_str = all_farm_actions[int(farm_action.item())]
                 farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
+                print("FARMER INDEX:", farmer_index)
 
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)

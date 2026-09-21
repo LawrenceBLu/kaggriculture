@@ -163,10 +163,11 @@ def invalid_action(obs, action, farmhand_index=None):
         if farmhand_index < len(obs['farms'][player_num]['hands']):
             x, y = obs['farms'][player_num]['hands'][farmhand_index]
             inventory = obs['private']['inventories'][farmhand_index + 1]
-        elif farmhand_index is not None and action != "PASS":
-            return invalid
-        elif farmhand_index is not None and action == "PASS":
-            return valid
+        else:
+            if action != "PASS":
+                return invalid
+            elif action == "PASS":
+                return valid
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
@@ -320,7 +321,7 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
     player_num = internal_obs["player"]
     if is_farm == True:
         # Update mask if on same tile as previous
-        if index > 0:
+        if index >= 0:
             past_pos = set(internal_obs["all_pos"][:index])
             if index < len(internal_obs["all_pos"]) and internal_obs["all_pos"][index] in past_pos:
                 mask[4:-1] = [False] * len(mask[4:-1])
