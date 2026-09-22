@@ -44,11 +44,15 @@ class ActorCritic(nn.Module):
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
         # FINISH handling lstm state resets
         grid_state = self.cnn(grid)
-        state = torch.cat([grid_state, non_tiles.unsqueeze(0)], dim=-1)
+        # print("POST CNN", grid_state.shape)
+        state = torch.cat([grid_state, non_tiles], dim=-1)
+        # print("POST CAT", state.shape)
         x = self.pre_lstm(state)
+        # print("POST PRE LSTM", x.shape)
 
         if torch.all(ep_starts == 0.0):
-            lstm_out, hidden = self.lstm(x.unsqueeze(0), hidden)
+            lstm_out, hidden = self.lstm(x.unsqueeze(1), hidden)
+            lstm_out = lstm_out.squeeze(1)
         else:
             lstm_out = []
             n_seq = hidden[0].shape[1]
@@ -80,7 +84,6 @@ class ActorCritic(nn.Module):
         market_masks = []
         log_probs = []
         
-        print("STATE", internal_obs)
         for farmer_index, farmer_logits in enumerate(farmer_vec):
             farm_masks.append(farm_mask)
             farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask))
@@ -89,7 +92,6 @@ class ActorCritic(nn.Module):
                 farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
                 farm_action_str = all_farm_actions[int(farm_action.item())]
                 farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
-                print("FARMER INDEX:", farmer_index)
 
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)
@@ -112,44 +114,42 @@ class ActorCritic(nn.Module):
         return farm_actions, market_actions, log_p, farm_masks, market_masks
 
     def compute_entropy(self, farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks):
-        hands_vec = farm_logits.reshape(self.num_hands+1, -1)
-        market_vec = market_logits.reshape(self.num_orders, -1)
+        hands_vec = farm_logits.reshape(farm_logits.size(0), self.num_hands+1, -1)
+        market_vec = market_logits.reshape(market_logits.size(0), self.num_orders, -1)
 
         log_probs = []
         entropies = []
         log_num_valid = []
 
-        for hands_i in range(len(hands_vec)):
-            farm_dist = MaskedCategorical(logits=farm_logits[hands_i], mask=torch.tensor(farm_masks[hands_i]))
-            farm_entropy = farm_dist.entropy()
-            log_prob = farm_dist.log_prob(farm_actions[hands_i])
+        farm_dist = MaskedCategorical(logits=hands_vec, mask=farm_masks)
+        farm_entropy = farm_dist.entropy()
+        farm_log_prob = farm_dist.log_prob(farm_actions)
 
-            num_valid = farm_masks[hands_i].sum(-1).clamp(min=1)
-            log_num_valid.append(torch.log(num_valid.float()).clamp(min=1e-8))
+        farm_num_valid = farm_masks.sum(-1).clamp(min=1)
+        log_num_valid.append(torch.log(farm_num_valid.float()).clamp(min=1e-8))
 
-            entropies.append(farm_entropy)
-            log_probs.append(log_prob)
+        entropies.append(farm_entropy)
+        log_probs.append(farm_log_prob)
 
-        for market_i in range(len(market_vec)):
-            market_dist = MaskedCategorical(logits=market_logits[market_i], mask=torch.tensor(market_masks[market_i]))
-            market_entropy = market_dist.entropy()
-            log_prob = market_dist.log_prob(market_actions[market_i])
+        market_dist = MaskedCategorical(logits=market_vec, mask=market_masks)
+        market_entropy = market_dist.entropy()
+        market_log_prob = market_dist.log_prob(market_actions)
 
-            num_valid = market_masks[hands_i].sum(-1).clamp(min=1)
-            log_num_valid.append(torch.log(num_valid.float()).clamp(min=1e-8))
+        market_num_valid = market_masks.sum(-1).clamp(min=1)
+        log_num_valid.append(torch.log(market_num_valid.float()).clamp(min=1e-8))
 
-            entropies.append(market_entropy)
-            log_probs.append(log_prob)
+        entropies.append(market_entropy)
+        log_probs.append(market_log_prob)
 
-        log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
-        normed = torch.stack(entropies, dim=-1)/torch.stack(log_num_valid, dim=-1)
+        log_p = torch.cat(log_probs, dim=-1).sum(dim=-1)
+        normed = torch.cat(entropies, dim=-1)/torch.cat(log_num_valid, dim=-1)
         entropy = normed.mean(dim=-1).mean()
 
         return log_p, entropy
 
     def forward(self, grid, non_tiles, hidden, ep_starts, farm_mask, market_mask, internal_obs):
         # No detach because ran under no_grad()
-        lstm_out, hidden = self._process_sequence(grid.unsqueeze(0), non_tiles, hidden, ep_starts)
+        lstm_out, hidden = self._process_sequence(grid, non_tiles, hidden, ep_starts)
 
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
@@ -163,8 +163,7 @@ class ActorCritic(nn.Module):
         return farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, hidden
 
     def evaluate(self, grid, non_tiles, hiddens, farm_actions, market_actions, farm_masks, market_masks, ep_starts):
-        hidden = hiddens[0]
-        lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
+        lstm_out, _ = self._process_sequence(grid, non_tiles, hiddens, ep_starts)
         
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
@@ -179,7 +178,7 @@ class ActorCritic(nn.Module):
         return log_probs, entropy, state_values
 
     def predict_value(self, grid, non_tiles, hidden, ep_starts):
-        lstm_out, _ = self._process_sequence(grid.unsqueeze(0), non_tiles, hidden, ep_starts)
+        lstm_out, _ = self._process_sequence(grid, non_tiles, hidden, ep_starts)
         state_value = self.critic_head(lstm_out)
 
         return state_value

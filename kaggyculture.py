@@ -151,6 +151,9 @@ def invalid_action(obs, action, farmhand_index=None):
     invalid, valid = False, True
     if type(action) in [list, tuple]: type_action = action[0]
     else: type_action = action
+
+    if type_action == "PASS":
+        return valid
     # obs = obs["observation"]
     player_num = obs["player"]
     money = obs['farms'][player_num]['money']
@@ -166,8 +169,6 @@ def invalid_action(obs, action, farmhand_index=None):
         else:
             if action != "PASS":
                 return invalid
-            elif action == "PASS":
-                return valid
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
@@ -293,6 +294,7 @@ def invalid_action(obs, action, farmhand_index=None):
     if type_action == "HIRE":
         hire_cost = _fib(obs['farms'][player_num]['hires_today'])
         if money < hire_cost: return invalid
+        if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])
@@ -313,12 +315,17 @@ def update_internal_obs(internal_obs):
         all_pos.append((x,y))
 
     internal_obs["all_pos"] = all_pos
+    internal_obs["num_hands"] = internal_obs["farms"][player_num]["hires_today"]
     # internal_obs["seeds"] = obs["private"]["seeds"]
     # internal_obs["balance"] = obs["farms"][player_num]["money"]
 
 
 def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=False):
     player_num = internal_obs["player"]
+    if action == "HIRE":
+        internal_obs["num_hands"] += 1
+        if internal_obs["num_hands"] >= 5:
+            return list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
     if is_farm == True:
         # Update mask if on same tile as previous
         if index >= 0:
