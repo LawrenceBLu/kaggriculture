@@ -7,7 +7,9 @@ from models import ActorCritic
 from copy import deepcopy
 from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs, update_internal_obs
 from action_space import farmhand_action_space, market_action_space
+from env import Env
 
+# torch.autograd.set_detect_anomaly(True)
 
 class ReplayBuffer():
   def __init__(self):
@@ -91,7 +93,7 @@ class ReplayBuffer():
   
       returns = advantage + values
 
-      self.advantages = advantage
+      self.advantages = (advantage - advantage.mean())/(advantage.std() + 1e-8)
       self.returns = returns  
   
 
@@ -99,7 +101,7 @@ class PPO():
   def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
     self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders).to(device)
-    self.env = env
+    self.env = Env(env)
     
     self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
 
@@ -128,7 +130,7 @@ class PPO():
     self.init_env()
 
   def init_env(self):
-    state, _ = self.env.reset()
+    state = self.env.reset()
     self.last_obs = state
     self.last_ep_starts = True
     self.reset_hidden()
@@ -137,16 +139,7 @@ class PPO():
     self.last_hidden = (torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device), torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device))
 
   def step(self, action):
-    if self.steps == 720:
-      obs, _ = self.env.reset()
-      self.steps = 0
-      return obs, False
-    obs, _ = self.env.step(action)
-    self.steps += 1
-    if self.steps == 719:
-      return obs, True
-    
-    return obs, False
+    return self.env.step(action)
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
@@ -201,10 +194,12 @@ class PPO():
 
         farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
+        assert torch.isfinite(lstm_hidden[0]).all(), "hidden state h has non-finite values"
+        assert torch.isfinite(lstm_hidden[1]).all(), "hidden state c has non-finite values"
 
       action = self.action_idx_to_string(farm_actions, market_actions)
       action.extend([{"market":[], "farmer": ["PASS"]}])
-      new_state, done = self.step(action)
+      new_state, done, reward = self.step(action)
       # new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
@@ -219,7 +214,7 @@ class PPO():
         state = self.last_obs,
         farm_actions = farm_actions,
         market_actions = market_actions,
-        reward = 0,
+        reward = reward,
         done = self.last_ep_starts,
         state_value = state_value,
         log_prob = log_prob,
@@ -245,6 +240,7 @@ class PPO():
 
   def train(self):
     print("START TRAINING")
+    self.model.train()
     for _ in range(self.epochs):
       for batch_data in self.replay_buffer.get_batches(self.batch_size):
         grids, non_tiles = zip(*[self.process_obs(obs) for obs in batch_data.states])
@@ -256,23 +252,40 @@ class PPO():
         old_market_actions = torch.squeeze(torch.stack([torch.as_tensor(market_action) for market_action in batch_data.market_actions], dim=0)).detach().to(self.device)
         old_log_probs = torch.squeeze(torch.stack(batch_data.log_probs, dim=0)).detach().to(self.device)
         old_dones = torch.tensor(batch_data.dones, dtype=torch.float32).detach()
-        old_farm_masks = torch.squeeze(torch.stack([torch.as_tensor(farm_mask) for farm_mask in batch_data.farm_masks], dim=0)).detach().to(self.device)
-        old_market_masks = torch.squeeze(torch.stack([torch.as_tensor(market_mask) for market_mask in batch_data.market_masks], dim=0)).detach().to(self.device)
+        old_farm_masks = torch.stack([torch.as_tensor(farm_mask) for farm_mask in batch_data.farm_masks], dim=0).detach().to(self.device)
+        old_market_masks = torch.stack([torch.as_tensor(market_mask) for market_mask in batch_data.market_masks], dim=0).detach().to(self.device)
         h_list, c_list = zip(*batch_data.lstm_hiddens)
         h_stack = torch.stack(h_list, dim=1).squeeze(dim=2)
         c_stack = torch.stack(c_list, dim=1).squeeze(dim=2)
 
         log_probs, entropy, state_values = self.model.evaluate(old_grid, old_non_tiles, (h_stack, c_stack), old_farm_actions, old_market_actions, old_farm_masks, old_market_masks, old_dones)
 
-        ratio = torch.exp(log_probs - old_log_probs)
+        # print("log_probs", log_probs)
+        # print("old_log_probs", old_log_probs)
+        assert torch.isfinite(log_probs).all(), f"log_prob has nan/inf: {log_probs}"
+        # assert torch.isfinite(old_log_probs).all(), f"old_log_prob has nan/inf: {old_log_probs}"
+
+        ratio = torch.exp(torch.clamp(log_probs - old_log_probs, min=-20, max=2))
+        # assert torch.isfinite(ratio).all(), f"std has nan/inf: {ratio}"
 
         surr1 = ratio * batch_data.advantages
         surr2 = torch.clamp(ratio, 1-self.eps, 1+self.eps) * batch_data.advantages
 
-        loss = -torch.min(surr1, surr2) + self.value_c * self.mse(state_values, batch_data.returns) - self.entr_c * entropy
+        # print("adv std", batch_data.advantages.std())
 
+        loss = -torch.min(surr1, surr2) + self.value_c * self.mse(state_values, batch_data.returns) - self.entr_c * entropy
+        # print("loss:", loss)
+        # print("policy_loss:", -torch.min(surr1, surr2))
+        # print("value_loss:", (self.value_c * self.mse(state_values, batch_data.returns) - self.entr_c * entropy))
+        # print("entropy:", entropy.item() if torch.is_tensor(entropy) else entropy)
+        
         self.optim.zero_grad()
         loss.mean().backward()
+        # for name, p in self.model.cnn.named_parameters():
+        #   if p.grad is not None and not torch.isfinite(p.grad).all():
+        #       print(f"{name}.grad is already non-finite, BEFORE clipping/step")
+        total_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
+        # print(f"grad norm before clip: {total_norm}")
         self.optim.step()
 
     self.replay_buffer.clear()
