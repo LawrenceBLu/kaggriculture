@@ -101,7 +101,7 @@ def setup_tile_obs(obs):
     
     # list_of_layers = []
     
-    zero_matrix_copy = [[0]*10]*10
+    zero_matrix_copy = [[0 for _ in range(10)] for _ in range(10)]
     # plant_num = 0
     # animal_num = 0
     for y in range(10):
