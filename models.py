@@ -20,7 +20,7 @@ class CNN(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.pool(self.conv1(x))
+        x = self.pool(self.relu(self.conv1(x)))
         x = self.pool(self.relu(self.conv2(x)))
         x = self.relu(self.conv3(x))
         x = x.view(-1, 60 * 2 * 2)
@@ -86,7 +86,7 @@ class ActorCritic(nn.Module):
             farm_masks.append(farm_mask)
             farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask))
             farm_action = farm_dist.sample()
-            if farmer_index < (len(farmer_vec) - 1):
+            if farmer_index < (farmer_vec.shape[0] - 1):
                 farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
                 farm_action_str = all_farm_actions[int(farm_action.item())]
                 farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
@@ -99,7 +99,7 @@ class ActorCritic(nn.Module):
             market_masks.append(market_mask)
             market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask))
             market_action = market_dist.sample()
-            if market_index < (len(market_vec) - 1):
+            if market_index < (market_vec.shape[0] - 1):
                 market_mask = list(map(lambda x: invalid_action(internal_obs, x), all_market_actions.values()))
                 market_action_str = all_market_actions[int(market_action.item())]
                 market_mask = update_mask(market_mask, internal_obs, (market_action, market_action_str), all_market_actions, index=market_index)
@@ -119,9 +119,9 @@ class ActorCritic(nn.Module):
         entropies = []
         log_num_valid = []
 
-        print("hands_vec has nan:", torch.isnan(hands_vec).any().item())
-        print("hands_vec has inf:", torch.isinf(hands_vec).any().item())
-        print("hands_vec min/max:", hands_vec.min().item(), hands_vec.max().item())
+        # print("hands_vec has nan:", torch.isnan(hands_vec).any().item())
+        # print("hands_vec has inf:", torch.isinf(hands_vec).any().item())
+        # print("hands_vec min/max:", hands_vec.min().item(), hands_vec.max().item())
 
         
         farm_dist = MaskedCategorical(logits=hands_vec, mask=farm_masks)
@@ -129,7 +129,11 @@ class ActorCritic(nn.Module):
         farm_log_prob = farm_dist.log_prob(farm_actions)
 
         farm_num_valid = farm_masks.sum(-1).clamp(min=1)
-        log_num_valid.append(torch.log(farm_num_valid.float()).clamp(min=1e-8))
+        farm_log_valid = torch.log(farm_num_valid.float())
+        safe_divisor = torch.where(farm_num_valid > 1, farm_log_valid, torch.ones_like(farm_log_valid))
+
+        # log_num_valid.append(farm_log_valid.clamp(min=1e-8))
+        log_num_valid.append(safe_divisor)
 
         entropies.append(farm_entropy)
         log_probs.append(farm_log_prob)
@@ -139,17 +143,21 @@ class ActorCritic(nn.Module):
         market_log_prob = market_dist.log_prob(market_actions)
 
         market_num_valid = market_masks.sum(-1).clamp(min=1)
-        log_num_valid.append(torch.log(market_num_valid.float()).clamp(min=1e-8))
+        market_log_valid = torch.log(market_num_valid.float())
+
+        safe_divisor = torch.where(market_num_valid > 1, market_log_valid, torch.ones_like(market_log_valid))
+        log_num_valid.append(safe_divisor)
 
         entropies.append(market_entropy)
         log_probs.append(market_log_prob)
 
         log_p = torch.cat(log_probs, dim=-1).sum(dim=-1)
+        
         normed = torch.cat(entropies, dim=-1)/torch.cat(log_num_valid, dim=-1)
         entropy = normed.mean(dim=-1).mean()
 
-        print("farm_num_valid min:", farm_num_valid.min().item())
-        print("log_num_valid min:", torch.cat(log_num_valid, dim=-1).min().item())
+        # print("farm_num_valid min:", farm_num_valid.min().item())
+        # print("log_num_valid min:", torch.cat(log_num_valid, dim=-1).min().item())
 
         return log_p, entropy
 

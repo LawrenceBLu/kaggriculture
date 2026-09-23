@@ -127,7 +127,7 @@ class PPO():
     self.farmer_action_space = farmhand_action_space()
     self.market_action_space = market_action_space()
 
-    self.init_env()
+    # self.init_env()
 
   def init_env(self):
     state = self.env.reset()
@@ -138,32 +138,43 @@ class PPO():
   def reset_hidden(self):
     self.last_hidden = (torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device), torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device))
 
-  def step(self, action):
-    return self.env.step(action)
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
-    action_dict['farmer'] = list(self.farmer_action_space[int(farmer_action_idx[0])])
+    farmer_action = self.farmer_action_space[int(farmer_action_idx[0])]
+    if type(farmer_action) == str:
+      action_dict['farmer'] = [farmer_action]
+    else:
+      action_dict['farmer'] = list(farmer_action)
     
     farmhand_actions = []
     if len(farmer_action_idx) > 0:
       for farmhand_action in farmer_action_idx[1:]:
-        farmhand_actions.append(list(self.farmer_action_space[int(farmhand_action)])) 
+        hand_action = self.farmer_action_space[int(farmhand_action)]
+        if type(hand_action) == str:
+          farmhand_actions.append(hand_action)
+        else:
+          farmhand_actions.append(list(hand_action))
       
       action_dict['hands'] = farmhand_actions
     
     market_actions = []
     for market_action in market_action_idx:
-      if self.market_action_space[int(market_action)] != "PASS": market_actions.append(list(self.market_action_space[int(market_action)]))
+      market_action = self.market_action_space[int(market_action)]
+      if market_action != "PASS":
+        if type(market_action) == str:
+          market_actions.append([market_action])
+        else:
+          market_actions.append(list(market_action))
     
     action_dict['market'] = market_actions
     
-    return [action_dict]
+    return action_dict
 
   def process_obs(self, obs):
     # Add function to split up obs into grid and non_tiles
-    grid = setup_tile_obs(obs)
-    non_tiles = setup_non_tile_observation(obs)
+    grid = setup_tile_obs(obs['observation'])
+    non_tiles = setup_non_tile_observation(obs['observation'])
     self.replay_buffer.internal_obs = deepcopy(obs["observation"])
     update_internal_obs(self.replay_buffer.internal_obs)
 
@@ -181,6 +192,7 @@ class PPO():
     print("COLLECTING ROLLOUT")
     n_steps = 0
     self.replay_buffer.clear()
+    self.init_env()
     lstm_hidden = deepcopy(self.last_hidden)
 
     while n_steps < n_rollout_steps:
@@ -188,18 +200,17 @@ class PPO():
         grid, non_tiles = self.process_obs(self.last_obs)
         farm_mask, market_mask = self.create_masks(self.last_obs)
 
-        grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
+        grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=self.device).permute(2, 0, 1)
         non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device).unsqueeze(0)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
 
         farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, lstm_hidden = self.model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, self.replay_buffer.internal_obs)
         # turn action indices into string
-        assert torch.isfinite(lstm_hidden[0]).all(), "hidden state h has non-finite values"
-        assert torch.isfinite(lstm_hidden[1]).all(), "hidden state c has non-finite values"
 
       action = self.action_idx_to_string(farm_actions, market_actions)
-      action.extend([{"market":[], "farmer": ["PASS"]}])
-      new_state, done, reward = self.step(action)
+      actions = [action]
+      actions.extend([{"market":[], "farmer": ["PASS"]}])
+      new_state, done, reward = self.env.step(actions)
       # new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
@@ -209,6 +220,7 @@ class PPO():
       #     ep_starts = torch.tensor([False], dtype=torch.float32, device=self.device)
       #     terminal_value = self.model.predict_values(terminal_grid, terminal_non_tiles, lstm_hidden, ep_starts)
       #   reward += self.gamma * terminal_value
+
 
       self.replay_buffer.store(
         state = self.last_obs,
@@ -229,7 +241,7 @@ class PPO():
 
     with torch.no_grad():
       grid, non_tiles = self.process_obs(new_state)
-      grid = torch.tensor(grid, dtype=torch.float32, device=self.device).permute(2, 0, 1)
+      grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=self.device).permute(2, 0, 1)
       non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device).unsqueeze(0)
       ep_starts = torch.tensor([done], dtype=torch.float32, device=self.device)
       state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)
@@ -246,7 +258,7 @@ class PPO():
         grids, non_tiles = zip(*[self.process_obs(obs) for obs in batch_data.states])
         grids, non_tiles = list(grids), list(non_tiles)
 
-        old_grid = torch.squeeze(torch.stack([torch.as_tensor(g, dtype=torch.float32).permute(2, 0, 1) for g in grids], dim=0)).detach().to(self.device)
+        old_grid = torch.squeeze(torch.stack([torch.from_numpy(np.array(g)).to(dtype=torch.float32).permute(2, 0, 1) for g in grids], dim=0)).detach().to(self.device)
         old_non_tiles = torch.squeeze(torch.stack([torch.as_tensor(non_tile, dtype=torch.float32).unsqueeze(0) for non_tile in non_tiles], dim=0)).detach().to(self.device)
         old_farm_actions = torch.squeeze(torch.stack([torch.as_tensor(farm_action) for farm_action in batch_data.farm_actions], dim=0)).detach().to(self.device)
         old_market_actions = torch.squeeze(torch.stack([torch.as_tensor(market_action) for market_action in batch_data.market_actions], dim=0)).detach().to(self.device)
@@ -288,6 +300,11 @@ class PPO():
         # print(f"grad norm before clip: {total_norm}")
         self.optim.step()
 
-    self.replay_buffer.clear()
-    self.init_env()
     print("DONE")
+
+
+  def save_model(self):
+    torch.save(self.model.state_dict(), "./model_checkpoint.pt")
+
+  def print_last_state(self):
+    print(self.last_obs)
