@@ -51,7 +51,6 @@ for i, shop in enumerate(list_of_all_shops):
 
 
 def setup_non_tile_observation(obs):
-    obs = obs['observation']
     player_num = obs["player"]
     market_curr_inven = obs['market']['inventory']
     market_inventory = [(market_curr_inven[inven] - 10000) / list_of_market_deviation[list_of_all_sellable_resources.index(inven) ] for inven in market_curr_inven]
@@ -71,10 +70,12 @@ def setup_non_tile_observation(obs):
     inventory_obs = []
     num_hands = 0
     for inv in obs["private"]["inventories"]:
+        # print("MORE HANDS 1")
         num_hands += 1
         inventory_obs.extend(encode_inventory(inv, MAX_INVEN_CAP, list_of_all_sellable_resources))
 
-    for i in range(num_hands, 5):
+    for i in range(num_hands, MAX_FARMHANDS+1):
+        # print("MORE HANDS 2")
         inventory_obs.extend([0] * len(list_of_all_sellable_resources))
 
     money = (obs['farms'][player_num]['money'] - 3000) / 3000
@@ -94,7 +95,6 @@ def setup_non_tile_observation(obs):
 
 MAX_UNWATERED_DAYS = 30
 def setup_tile_obs(obs):
-    obs = obs['observation']
     player_num = obs["player"]
     # list_of_all_animals_w_none = list_of_all_animals + [None]
     # tile_options = [None, "LOCKED"] + list_of_all_crops + ["WEED"] + list_of_all_animals
@@ -295,6 +295,7 @@ def invalid_action(obs, action, farmhand_index=None):
         hire_cost = _fib(obs['farms'][player_num]['hires_today'])
         if money < hire_cost: return invalid
         if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
+        if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])
@@ -322,10 +323,6 @@ def update_internal_obs(internal_obs):
 
 def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=False):
     player_num = internal_obs["player"]
-    if action == "HIRE":
-        internal_obs["num_hands"] += 1
-        if internal_obs["num_hands"] >= 5:
-            return list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
     if is_farm == True:
         # Update mask if on same tile as previous
         if index >= 0:
@@ -344,6 +341,11 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
         action_idx, action_str = action
         if index == 0:
             internal_obs["past_market_actions"] = set()
+
+        if action_str == "HIRE":
+            internal_obs["num_hands"] += 1
+            if internal_obs["num_hands"] >= 5:
+                return list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
 
         # Update money after buying something
         if type(action_str) == tuple:

@@ -9,7 +9,7 @@ def run():
 
   grid_size = 26
   cnn_dim = 128
-  non_tile_len = 88
+  non_tile_len = 97
   linear_dim = 128
   lstm_dim = 256
   lstm_layers = 1
@@ -29,17 +29,15 @@ def run():
   
   ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
-  max_steps = 600
-  num_iterations = 2
-
+  num_rollouts = 5
+  max_steps = (720 * num_rollouts) - 1
+  num_iterations = 20
 
 
   for _ in range(num_iterations):
     ppo.collect_rollout(max_steps)
     ppo.train()
-
-  env.close()
-
+    ppo.save_model()
 
 if __name__ == "__main__":
   run()

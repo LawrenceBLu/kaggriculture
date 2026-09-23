@@ -8,25 +8,24 @@ class Env():
         self.past_action = None
         self.reset()
         self.max_money = 0
-        self.steps = 0
         
     def reset(self):
         obs, _ = self.env.reset()
         self.past_obs = obs["observation"]
+        self.steps = 0
         return obs
         
     def step(self, action):
         reward = 0
         self.past_action = action
+        self.steps += 1
         if self.steps == 720:
-            obs, _ = self.reset()
-            self.steps = 0
+            obs = self.reset()
             self.past_market_action = None
             return obs, False, reward
         obs, _ = self.env.step(action)
         reward = self.get_reward(obs["observation"])
         self.past_obs = obs["observation"]
-        self.steps += 1
         if self.steps == 719:
             return obs, True, reward
         return obs, False, reward
