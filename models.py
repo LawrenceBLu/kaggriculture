@@ -20,7 +20,7 @@ class CNN(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.conv1(x))
         x = self.pool(self.relu(self.conv2(x)))
         x = self.relu(self.conv3(x))
         x = x.view(-1, 60 * 2 * 2)
@@ -44,11 +44,9 @@ class ActorCritic(nn.Module):
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
         # FINISH handling lstm state resets
         grid_state = self.cnn(grid)
-        # print("POST CNN", grid_state.shape)
         state = torch.cat([grid_state, non_tiles], dim=-1)
-        # print("POST CAT", state.shape)
         x = self.pre_lstm(state)
-        # print("POST PRE LSTM", x.shape)
+
 
         if torch.all(ep_starts == 0.0):
             lstm_out, hidden = self.lstm(x.unsqueeze(1), hidden)
@@ -121,6 +119,11 @@ class ActorCritic(nn.Module):
         entropies = []
         log_num_valid = []
 
+        print("hands_vec has nan:", torch.isnan(hands_vec).any().item())
+        print("hands_vec has inf:", torch.isinf(hands_vec).any().item())
+        print("hands_vec min/max:", hands_vec.min().item(), hands_vec.max().item())
+
+        
         farm_dist = MaskedCategorical(logits=hands_vec, mask=farm_masks)
         farm_entropy = farm_dist.entropy()
         farm_log_prob = farm_dist.log_prob(farm_actions)
@@ -145,6 +148,9 @@ class ActorCritic(nn.Module):
         normed = torch.cat(entropies, dim=-1)/torch.cat(log_num_valid, dim=-1)
         entropy = normed.mean(dim=-1).mean()
 
+        print("farm_num_valid min:", farm_num_valid.min().item())
+        print("log_num_valid min:", torch.cat(log_num_valid, dim=-1).min().item())
+
         return log_p, entropy
 
     def forward(self, grid, non_tiles, hidden, ep_starts, farm_mask, market_mask, internal_obs):
@@ -163,7 +169,11 @@ class ActorCritic(nn.Module):
         return farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, hidden
 
     def evaluate(self, grid, non_tiles, hiddens, farm_actions, market_actions, farm_masks, market_masks, ep_starts):
+        # for name, p in self.cnn.named_parameters():
+        #     if not torch.isfinite(p).all():
+        #         print(f"{name} is already non-finite BEFORE this forward pass")
         lstm_out, _ = self._process_sequence(grid, non_tiles, hiddens, ep_starts)
+        # assert torch.isfinite(lstm_out).all(), "lstm_out has nan/inf"
         
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
