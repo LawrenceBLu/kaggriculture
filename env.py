@@ -37,7 +37,8 @@ class env():
 
         if self.steps == 719:
             # rewards for win
-            reward += 5
+            if obs['farm'][player_num]['money'] > obs['farm'][player_num^1]['money']:
+                reward += 5
             # rewards for total money/25k
             reward += self.max_money/25000
             
@@ -60,15 +61,24 @@ class env():
                 if self.past_obs['market']['inventory'][self.past_action[1]] < 10000:
                     reward += (10000-self.past_obs['market']['inventory'][self.past_action[1]] / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
             tiles = [tile for column in obs['farm'][player_num]['tiles'] for tile in column]
+            past_tiles = [tile for column in self.past_obs['farm'][player_num]['tiles'] for tile in column]
             # penalizes for weed on a tile, disincentivizes underwatering
-            if "WEED" in tiles:
-                reward -= 0.5
+            if obs['step'] % 24 == 0:
+                for action in self.past_action:
+                    if action == "HIRE": reward += 0.25
+                    
+            for "WEED" in tiles:
+                reward -= 0.25
+                
             # rewards animals near the center tile
             for y in range(len(obs['farm'][player_num]['tiles'])):
                 for x in range(len(obs['farm'][player_num]['tiles'][y])):
                     tile = obs['farm'][player_num]['tiles'][y][x]
+                    past_tile = self.past_obs['farm'][player_num]['tiles'][y][x]
                     if isinstance(tile, dict):
                         if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE"):
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
                                 reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 0.25
+                    if type(past_tile) == str and past_tile == "WEED" and type(tile) == None :
+                        reward += 0.25
         return reward
