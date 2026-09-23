@@ -66,8 +66,13 @@ class Env():
                             reward += (10000-self.past_obs['market']['inventory'][action[1]] / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
             tiles = [tile for column in obs['farms'][player_num]['tiles'] for tile in column]
             # penalizes for weed on a tile, disincentivizes underwatering
-            if "WEED" in tiles:
-                reward -= 0.5
+            if obs['step'] % 24 == 0:
+                for action in self.past_action:
+                    if action == "HIRE": reward += 0.25
+                    
+            for "WEED" in tiles:
+                reward -= 0.25
+                
             # rewards animals near the center tile
             for y in range(len(obs['farms'][player_num]['tiles'])):
                 for x in range(len(obs['farms'][player_num]['tiles'][y])):
@@ -76,4 +81,6 @@ class Env():
                         if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE"):
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
                                 reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 0.25
+                    if type(past_tile) == str and past_tile == "WEED" and type(tile) == None :
+                        reward += 0.25
         return reward
