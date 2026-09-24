@@ -3,10 +3,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 from ppo import PPO
+from env import KaggleEnvWrapper
+import gymnasium as gym
+
+def make_env(env_name, num_channels, non_tile_len, opponent_agent="random"):
+    def _init():
+        env = KaggleEnvWrapper(env_name, num_channels, non_tile_len, opponent_agent)
+        return env
+    return _init
 
 def run():
-  env = make("kaggriculture", debug=True)
-
   grid_size = 26
   cnn_dim = 128
   non_tile_len = 97
@@ -26,8 +32,14 @@ def run():
   gae_lambda = 0.99
   gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+  num_envs = 5
+  envs = gym.vector.AsyncVectorEnv([
+      make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="random")
+      for i in range(num_envs)
+  ])
   
-  ppo = PPO(env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
+  ppo = PPO(envs, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
   num_rollouts = 5
   max_steps = (720 * num_rollouts) - 1

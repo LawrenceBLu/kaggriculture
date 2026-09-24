@@ -7,7 +7,6 @@ from models import ActorCritic
 from copy import deepcopy
 from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs, update_internal_obs
 from action_space import farmhand_action_space, market_action_space
-from env import Env
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -42,7 +41,7 @@ class ReplayBuffer():
     self.advantages = []
     self.returns = []
 
-  def store(self, state, farm_actions, market_actions, reward, done, state_value, log_prob, lstm_hidden, farm_masks, market_masks):
+  def store(self, state, farm_actions, market_actions, reward, done, state_value, log_prob, lstm_hidden, farm_masks, market_masks, raw_obs):
     self.states.append(state)
     self.farm_actions.append(farm_actions)
     self.market_actions.append(market_actions)
@@ -53,6 +52,7 @@ class ReplayBuffer():
     self.lstm_hiddens.append(lstm_hidden)
     self.farm_masks.append(farm_masks)
     self.market_masks.append(market_masks)
+    self.internal_obs = deepcopy(raw_obs)
 
   def get_batches(self, batch_size):
     batch_data = ReplayBuffer()
@@ -100,8 +100,8 @@ class ReplayBuffer():
 class PPO():
   def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
-    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders).to(device)
-    self.env = Env(env)
+    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device).to(device)
+    self.env = env
     
     self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
 
@@ -130,14 +130,14 @@ class PPO():
     # self.init_env()
 
   def init_env(self):
-    state = self.env.reset()
+    state, info = self.env.reset()
     self.last_obs = state
     self.last_ep_starts = True
+    self.replay_buffer.internal_obs = deepcopy(info["raw_obs"])
     self.reset_hidden()
 
   def reset_hidden(self):
     self.last_hidden = (torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device), torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device))
-
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
@@ -173,9 +173,8 @@ class PPO():
 
   def process_obs(self, obs):
     # Add function to split up obs into grid and non_tiles
-    grid = setup_tile_obs(obs['observation'])
-    non_tiles = setup_non_tile_observation(obs['observation'])
-    self.replay_buffer.internal_obs = deepcopy(obs["observation"])
+    grid = obs["grid"]
+    non_tiles = obs["non_tiles"]
     update_internal_obs(self.replay_buffer.internal_obs)
 
     return grid, non_tiles
@@ -183,13 +182,13 @@ class PPO():
   def create_masks(self, obs):
     # First farm_mask is for farmer only
 
-    farm_mask = list(map(lambda x: invalid_action(obs["observation"], x), self.farmer_action_space.values()))
-    market_mask = list(map(lambda x: invalid_action(obs["observation"], x), self.market_action_space.values()))
+    farm_mask = list(map(lambda x: invalid_action(obs, x), self.farmer_action_space.values()))
+    market_mask = list(map(lambda x: invalid_action(obs, x), self.market_action_space.values()))
 
     return farm_mask, market_mask
 
   def collect_rollout(self, n_rollout_steps):
-    print("COLLECTING ROLLOUT")
+    # print("COLLECTING ROLLOUT")
     n_steps = 0
     self.replay_buffer.clear()
     self.init_env()
@@ -208,9 +207,8 @@ class PPO():
         # turn action indices into string
 
       action = self.action_idx_to_string(farm_actions, market_actions)
-      actions = [action]
-      actions.extend([{"market":[], "farmer": ["PASS"]}])
-      new_state, done, reward = self.env.step(actions)
+    
+      new_state, reward, done, info = self.env.step(action)
       # new_state, reward, terminated, truncated, info = self.env.step(action)
       n_steps += 1
 
@@ -232,7 +230,8 @@ class PPO():
         log_prob = log_prob,
         lstm_hidden = self.last_hidden,
         farm_masks = farm_masks,
-        market_masks = market_masks
+        market_masks = market_masks,
+        raw_obs = info["raw_obs"]
       )
 
       self.last_obs = new_state
@@ -247,11 +246,11 @@ class PPO():
       state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)
 
     self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma, self.device)
-    print("FINISHED ROLLOUT")
+    # print("FINISHED ROLLOUT")
 
 
   def train(self):
-    print("START TRAINING")
+    # print("START TRAINING")
     self.model.train()
     for _ in range(self.epochs):
       for batch_data in self.replay_buffer.get_batches(self.batch_size):
@@ -263,7 +262,7 @@ class PPO():
         old_farm_actions = torch.squeeze(torch.stack([torch.as_tensor(farm_action) for farm_action in batch_data.farm_actions], dim=0)).detach().to(self.device)
         old_market_actions = torch.squeeze(torch.stack([torch.as_tensor(market_action) for market_action in batch_data.market_actions], dim=0)).detach().to(self.device)
         old_log_probs = torch.squeeze(torch.stack(batch_data.log_probs, dim=0)).detach().to(self.device)
-        old_dones = torch.tensor(batch_data.dones, dtype=torch.float32).detach()
+        old_dones = torch.tensor(batch_data.dones, dtype=torch.float32).detach().to(self.device)
         old_farm_masks = torch.stack([torch.as_tensor(farm_mask) for farm_mask in batch_data.farm_masks], dim=0).detach().to(self.device)
         old_market_masks = torch.stack([torch.as_tensor(market_mask) for market_mask in batch_data.market_masks], dim=0).detach().to(self.device)
         h_list, c_list = zip(*batch_data.lstm_hiddens)
@@ -300,7 +299,7 @@ class PPO():
         # print(f"grad norm before clip: {total_norm}")
         self.optim.step()
 
-    print("DONE")
+    # print("DONE")
 
 
   def save_model(self):

@@ -28,7 +28,7 @@ class CNN(nn.Module):
         return x
 
 class ActorCritic(nn.Module):
-    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders):
+    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device):
         super().__init__()
         self.cnn = CNN(grid_size, cnn_dim)
         self.pre_lstm = nn.Linear(cnn_dim+non_tile_len, linear_dim)
@@ -40,6 +40,8 @@ class ActorCritic(nn.Module):
         self.actor_market_head = nn.Linear(lstm_dim, market_action_dim*num_orders)
         self.critic_head = nn.Linear(lstm_dim, 1)
         self.linear_dim = linear_dim
+
+        self.device = device
 
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
         # FINISH handling lstm state resets
@@ -84,7 +86,7 @@ class ActorCritic(nn.Module):
         
         for farmer_index, farmer_logits in enumerate(farmer_vec):
             farm_masks.append(farm_mask)
-            farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask))
+            farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask, device=self.device))
             farm_action = farm_dist.sample()
             if farmer_index < (farmer_vec.shape[0] - 1):
                 farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
@@ -97,7 +99,7 @@ class ActorCritic(nn.Module):
 
         for market_index, market_logits in enumerate(market_vec):
             market_masks.append(market_mask)
-            market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask))
+            market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask, device=self.device))
             market_action = market_dist.sample()
             if market_index < (market_vec.shape[0] - 1):
                 market_mask = list(map(lambda x: invalid_action(internal_obs, x), all_market_actions.values()))
