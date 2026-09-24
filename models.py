@@ -12,27 +12,34 @@ from action_space import market_action_space, farmhand_action_space
 class CNN(nn.Module):
     def __init__(self, input_channels, output_len):
         super().__init__()
-        self.conv1 = nn.Conv2d(input_channels, 20, 3, padding=1)
-        self.conv2 = nn.Conv2d(20, 40, 3, padding=1)
-        self.conv3 = nn.Conv2d(40, 60, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(60 * 2 * 2, output_len)
+        self.conv1 = nn.Conv2d(input_channels, 32, 3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv3 = nn.Conv2d(64, 64, 3, padding=1)
+        # self.pool = nn.MaxPool2d(2, 2)
+        self.fc = nn.Linear(64 * 10 * 10, output_len)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = x.view(-1, 60 * 2 * 2)
-        x = self.fc1(x)
+        x = x.view(-1, 64 * 10 * 10)
+        x = self.relu(self.fc(x))
         return x
 
 class ActorCritic(nn.Module):
-    def __init__(self, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device):
+    def __init__(self, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders):
         super().__init__()
         self.cnn = CNN(grid_size, cnn_dim)
-        self.pre_lstm = nn.Linear(cnn_dim+non_tile_len, linear_dim)
+        self.non_tile_feat = nn.Sequential(
+            nn.Linear(non_tile_len, 128),
+            nn.ReLU(),
+            nn.Linear(128, non_tile_dim),
+            nn.ReLU()
+        )
+        self.pre_lstm = nn.Linear(cnn_dim+non_tile_dim, linear_dim)
         self.lstm = nn.LSTM(linear_dim, lstm_dim, num_layers, batch_first=True)
+        self.relu = nn.ReLU()
 
         self.num_hands = num_hands
         self.num_orders = num_orders
@@ -46,8 +53,9 @@ class ActorCritic(nn.Module):
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
         # FINISH handling lstm state resets
         grid_state = self.cnn(grid)
-        state = torch.cat([grid_state, non_tiles], dim=-1)
-        x = self.pre_lstm(state)
+        non_tile_state = self.non_tile_feat(non_tiles)
+        state = torch.cat([grid_state, non_tile_state], dim=-1)
+        x = self.relu(self.pre_lstm(state))
 
 
         if torch.all(ep_starts == 0.0):

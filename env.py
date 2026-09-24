@@ -1,36 +1,64 @@
 from kaggle_environments.envs.kaggriculture.kaggriculture import MARKET_PARAMS
 import numpy as np
 from kaggyculture import load_dict_of_lists
+import gymnasium as gym
+from kaggle_environments import make
+from gymnasium import spaces
+from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_obs, update_internal_obs
 
-class Env():
-    def __init__(self, env):
-        self.env = env
+
+class KaggleEnvWrapper(gym.Env):
+    def __init__(self, env_name, num_channels, non_tile_len, opponent_agent="random"):
+        self.env = make(env_name, debug=False)
+        self.trainer = self.env.train([None, opponent_agent])
+        self.observation_space = spaces.Dict({
+            "grid": spaces.Box(low=0, high=1e6, shape=(num_channels, 10, 10), dtype=np.float32),
+            "non_tiles": spaces.Box(low=0, high=1e6, shape=(non_tile_len,), dtype=np.float32)
+        })  # define based on Kaggriculture's obs schema
+        self.action_space = spaces.Dict({
+            "farmer": spaces.Discrete(1),
+            "hands": spaces.Discrete(5),
+            "market": spaces.Discrete(10)
+        })       # define based on Kaggriculture's action schema
+
         self.past_obs = None
         self.past_action = None
-        self.reset()
-        self.max_money = 0
-        self.list_of_dicts = load_list_of_dicts()
-        
-    def reset(self):
-        obs, _ = self.env.reset()
-        self.past_obs = obs["observation"]
-        self.steps = 0
-        return obs
-        
+        self.done = False
+        self.dict_of_lists = load_dict_of_lists()
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        obs = self.trainer.reset()
+        self.past_obs = obs
+        state = self._extract_obs(obs)
+        self.done = False
+        return state, {"raw_obs": obs}
+
     def step(self, action):
+        # Build the joint action list: your agent's action + opponents' actions
         reward = 0
         self.past_action = action
-        self.steps += 1
-        if self.steps == 720:
-            obs = self.reset()
+        if self.done == True:
+            obs, info = self.reset()
+            state = self._extract_obs(obs)
             self.past_market_action = None
-            return obs, False, reward
-        obs, _ = self.env.step(action)
-        reward = self.get_reward(obs["observation"])
-        self.past_obs = obs["observation"]
-        if self.steps == 719:
-            return obs, True, reward
-        return obs, False, reward
+            return state, 0, False, info
+        obs, _, self.done, _ = self.trainer.step(action)
+        state = self._extract_obs(obs)
+        reward = self.get_reward(obs)
+        self.past_obs = obs
+        if self.done == True:
+            return state, reward, True, {"raw_obs": obs}
+        return state, reward, False, {"raw_obs": obs}
+
+    def _extract_obs(self, obs):
+        grid = setup_tile_obs(obs)
+        non_tiles = setup_non_tile_observation(obs)
+        observation = {"grid": grid, "non_tiles": non_tiles}
+        return observation
+
+    def get_internal_obs(self):
+        return self.past_obs
 
     def get_reward(self, obs):
         reward = 0
@@ -38,7 +66,7 @@ class Env():
         
         self.max_money = max(self.max_money, obs['farms'][player_num]['money'])
 
-        if self.steps == 719:
+        if self.done == True:
             # rewards for win
             if obs['farms'][player_num]['money'] > obs['farms'][player_num^1]['money']:
                 reward += 5
@@ -98,16 +126,16 @@ class Env():
                             reward += 0.2
                         elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and self.past_action == "FERTILIZE":
                             reward += 0.2
-                        elif "plant" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                        elif "plant" in past_tile.keys() and self.past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
                             reward += 0.25
-                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] == 1:
+                            if past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 reward += 0.5
                         elif "plant" in past_tile.keys() and self.past_tile['consecutive_unwatered'] >= 2:
                             reward -= 0.5
                             
-                        elif "animal" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] > 0.5:
+                        elif "animal" in past_tile.keys() and self.past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] > 0.5:
                             reward += 0.25
-                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] == 1:
+                            if past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] == 1:
                                 reward += 0.5
                         
                         elif "animal" in past_tile.keys() and self.past_tile['fed_today'] == False and self.past_action == "FEED":
@@ -116,5 +144,5 @@ class Env():
                             reward += 0.35
                         elif "animal" in past_tile.keys() and self.past_tile['consecutive_unfed'] >= 2:
                             reward -= 0.5
-                        
+                            
         return reward
