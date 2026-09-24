@@ -1,6 +1,6 @@
 from kaggle_environments.envs.kaggriculture.kaggriculture import MARKET_PARAMS
 import numpy as np
-from kaggyculture import load_list_of_dicts
+from kaggyculture import load_dict_of_lists
 
 class Env():
     def __init__(self, env):
@@ -80,6 +80,9 @@ class Env():
                 for x in range(len(obs['farms'][player_num]['tiles'][y])):
                     tile = obs['farms'][player_num]['tiles'][y][x]
                     past_tile = self.past_obs['farms'][player_num]['tiles'][y][x]
+                    if tile == None and np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
+                        if self.past_action == ["PLACE", "COOP"] or self.past_action == ['PLACE', "PASTURE"]:
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
                     if isinstance(tile, dict):
                         if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE") and self.past_action == ["PLACE", "COW"] or self.past_action == ["PLACE", "GOOSE"] or self.past_action == ["PLACE", "SHEEP"]:
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
