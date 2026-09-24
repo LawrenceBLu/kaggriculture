@@ -10,9 +10,10 @@ from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
 grid_size = 26
-cnn_dim = 128
+cnn_dim = 256
 non_tile_len = 97
-linear_dim = 128
+non_tile_dim = 64
+linear_dim = 256
 lstm_dim = 256
 lstm_layers = 1
 farm_action_dim = 113
@@ -20,15 +21,16 @@ num_hands = 5
 market_action_dim = 41
 num_orders = 10
 batch_size = 360
-lr = 0.001
-eps = 0.2
-epochs = 2
+lr = 1e-4
+clipping_eps = 0.2
+adam_eps = 1e-5
+epochs = 5
 value_c = 0.5
 entr_c = 0.01
 gae_lambda = 0.99
 gamma = 0.95
 
-model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders)
+model = ActorCritic(grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders)
 weights = torch.load("model_checkpoint.pt", weights_only=True)
 model.load_state_dict(weights)
 model.eval()
