@@ -1,5 +1,6 @@
 from kaggle_environments.envs.kaggriculture.kaggriculture import MARKET_PARAMS
 import numpy as np
+from kaggyculture import load_dict_of_lists
 
 class Env():
     def __init__(self, env):
@@ -8,6 +9,7 @@ class Env():
         self.past_action = None
         self.reset()
         self.max_money = 0
+        self.list_of_dicts = load_list_of_dicts()
         
     def reset(self):
         obs, _ = self.env.reset()
@@ -41,7 +43,7 @@ class Env():
             if obs['farms'][player_num]['money'] > obs['farms'][player_num^1]['money']:
                 reward += 5
             # rewards for total money/25k
-            reward += self.max_money/25000
+            reward += self.max_money/10000
             
         else:
             # rewards for first farms unlock
@@ -67,21 +69,52 @@ class Env():
             # penalizes for weed on a tile, disincentivizes underwatering
             if obs['step'] % 24 == 0:
                 for action in self.past_action:
-                    if action == "HIRE": reward += 0.25
+                    if action == "HIRE": reward += 0.5
             
             for t in tiles: 
                 if t is not None and "WEED" in t:
-                    reward -= 0.25
+                    reward -= 0.05
                 
             # rewards animals near the center tile
             for y in range(len(obs['farms'][player_num]['tiles'])):
                 for x in range(len(obs['farms'][player_num]['tiles'][y])):
                     tile = obs['farms'][player_num]['tiles'][y][x]
                     past_tile = self.past_obs['farms'][player_num]['tiles'][y][x]
+                    if tile == None and np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
+                        if self.past_action == ["PLACE", "COOP"] or self.past_action == ['PLACE', "PASTURE"]:
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
                     if isinstance(tile, dict):
-                        if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE"):
+                        if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE") and self.past_action == ["PLACE", "COW"] or self.past_action == ["PLACE", "GOOSE"] or self.past_action == ["PLACE", "SHEEP"]:
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
-                                reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 0.25
-                    if type(past_tile) == str and past_tile == "WEED" and type(tile) == None :
-                        reward += 0.25
+                                reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
+                    elif tile is None and self.past_action == "PLANT":
+                        if np.linalg.norm(np.array([y, x]) - (4,4)) > 3:
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
+
+                    elif type(past_tile) == str and past_tile == "WEED" and self.past_action == "DIG" :
+                        reward += 0.5
+                    if type(past_tile == dict):
+                        if "plant" in past_tile.keys() and past_tile['watered_today'] == False and self.past_action == "WATER":
+                            reward += 0.2
+                        elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and self.past_action == "FERTILIZE":
+                            reward += 0.2
+                        elif "plant" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                            reward += 0.25
+                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] == 1:
+                                reward += 0.5
+                        elif "plant" in past_tile.keys() and self.past_tile['consecutive_unwatered'] >= 2:
+                            reward -= 0.5
+                            
+                        elif "animal" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] > 0.5:
+                            reward += 0.25
+                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] == 1:
+                                reward += 0.5
+                        
+                        elif "animal" in past_tile.keys() and self.past_tile['fed_today'] == False and self.past_action == "FEED":
+                            reward += 0.35
+                        elif "animal" in past_tile.keys() and self.past_tile['cared_today'] == False and self.past_action == "CARE":
+                            reward += 0.35
+                        elif "animal" in past_tile.keys() and self.past_tile['consecutive_unfed'] >= 2:
+                            reward -= 0.5
+                        
         return reward

@@ -5,6 +5,7 @@ from global_vars import MARKET_SEED_PRICES
 import torch
 
 # HELPFUL DICTIONARIES
+
 list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
 list_of_all_crops = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
 list_of_all_animals = ['GOOSE', 'COW', 'SHEEP']
@@ -370,3 +371,27 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
         return mask
         
     return mask
+
+
+def load_dict_of_lists():
+    dict_of_lists = {
+        "list_of_all_sellable_resources": ("WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"),
+        "list_of_all_crops": ("WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"),
+        "list_of_all_animals": ("GOOSE", "COW", "SHEEP"),
+        "list_of_all_shops": ("BAKERY", "PIZZA_SHOP", "BRUNCH_SPOT", "YARN_STORE", "ICE_CREAM_SHOP", "PET_CAFE", "SMOOTHIE_SHOP", "FARMERS_MARKET"),
+
+        # market info
+        "list_of_market_deviation": (400, 450, 200, 100, 300, 332, 122, 105, 200),
+        "list_of_original_market_prices_resources_sell": (25, 35, 60, 120, 250, 50, 160, 200, 100),
+        "list_of_original_market_prices_crops_buy": (10, 20, 50, 100, 80),
+        "list_of_original_market_prices_animals_buy": (300, 400, 500),
+
+        # crop info
+        "list_of_first_yield_day_crops": (2, 4, 8, 10, 10),
+        "list_of_max_yield_steps_crops": (96, 72, 264, 384, 240),
+        "list_of_max_yield_crops": (6, 4, 4, 4, 6),
+        "list_of_max_yield_animals": (4, 6, 6),
+
+        "list_of_shop_types": ("BAKERY", "PIZZA SHOP", "BRUNCH SPOT", "YARN STORE", "ICE CREAM SHOP", "PET CAFE", "SMOOTHIE SHOP", "FARMERS MARKET")
+    }
+    return dict_of_lists
