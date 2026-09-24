@@ -84,34 +84,34 @@ class Env():
                         if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE") and self.past_action == ["PLACE", "COW"] or self.past_action == ["PLACE", "GOOSE"] or self.past_action == ["PLACE", "SHEEP"]:
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
                                 reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
-                    if isinstance(tile, dict):
-                        if tile == None and self.past_action == "PLANT":
-                            if np.linalg.norm(np.array([y, x]) - (4,4)) > 3:
-                                reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
+                    elif tile is None and self.past_action == "PLANT":
+                        if np.linalg.norm(np.array([y, x]) - (4,4)) > 3:
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
 
                     elif type(past_tile) == str and past_tile == "WEED" and self.past_action == "DIG" :
                         reward += 0.5
-                    elif type(past_tile) == dict and "plant" in past_tile.keys() and past_tile['watered_today'] == False and self.past_action == "WATER":
-                        reward += 0.2
-                    elif type(past_tile) == dict and "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and self.past_action == "FERTILIZE":
-                        reward += 0.2
-                    elif type(past_tile) == dict and "plant" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] > 0.5:
-                        reward += 0.25
-                        if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] == 1:
-                            reward += 0.5
-                    elif type(past_tile) == dict and "plant" in past_tile.keys() and self.past_tile['consecutive_unwatered'] >= 2:
-                        reward -= 0.5
+                    if type(past_tile == dict):
+                        if "plant" in past_tile.keys() and past_tile['watered_today'] == False and self.past_action == "WATER":
+                            reward += 0.2
+                        elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and self.past_action == "FERTILIZE":
+                            reward += 0.2
+                        elif "plant" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                            reward += 0.25
+                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_crops'][self.list_of_dicts['list_of_all_crops'][past_tile['crop']]] == 1:
+                                reward += 0.5
+                        elif "plant" in past_tile.keys() and self.past_tile['consecutive_unwatered'] >= 2:
+                            reward -= 0.5
+                            
+                        elif "animal" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] > 0.5:
+                            reward += 0.25
+                            if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] == 1:
+                                reward += 0.5
                         
-                    elif type(past_tile) == dict and "animal" in past_tile.keys() and self.past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] > 0.5:
-                        reward += 0.25
-                        if past_tile['yield_units']/self.list_of_dicts['list_of_max_yield_animals'][self.list_of_dicts['list_of_all_animals'][past_tile['animal']]] == 1:
-                            reward += 0.5
-                    
-                    elif type(past_tile) == dict and "animal" in past_tile.keys() and self.past_tile['fed_today'] == False and self.past_action == "FEED":
-                        reward += 0.35
-                    elif type(past_tile) == dict and "animal" in past_tile.keys() and self.past_tile['cared_today'] == False and self.past_action == "CARE":
-                        reward += 0.35
-                    elif type(past_tile) == dict and "animal" in past_tile.keys() and self.past_tile['consecutive_unfed'] >= 2:
-                        reward -= 0.5
+                        elif "animal" in past_tile.keys() and self.past_tile['fed_today'] == False and self.past_action == "FEED":
+                            reward += 0.35
+                        elif "animal" in past_tile.keys() and self.past_tile['cared_today'] == False and self.past_action == "CARE":
+                            reward += 0.35
+                        elif "animal" in past_tile.keys() and self.past_tile['consecutive_unfed'] >= 2:
+                            reward -= 0.5
                         
         return reward
