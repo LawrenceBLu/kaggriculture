@@ -55,27 +55,29 @@ class Env():
             #     reward -= 5
             for action in self.past_action:
                 if type(action) == list and len(action) != 0:
-                # rewards for buying low
-                    if action[0] == "BUY":
-                        if self.past_obs['market']['inventory'][self.past_action[1]] > 10000:
-                            reward += (self.past_obs['market']['inventory'][action[1]]-10000 / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
-                    # rewards for selling high
                     if action[0] == "SELL":
                         if self.past_obs['market']['inventory'][self.past_action[1]] < 10000:
                             reward += (10000-self.past_obs['market']['inventory'][action[1]] / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
+                # rewards for buying low
+            """                     if action[0] == "BUY":
+                                    if self.past_obs['market']['inventory'][self.past_action[1]] > 10000:
+                                        reward += (self.past_obs['market']['inventory'][action[1]]-10000 / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
+                """                    # rewards for selling high
             tiles = [tile for column in obs['farms'][player_num]['tiles'] for tile in column]
             # penalizes for weed on a tile, disincentivizes underwatering
             if obs['step'] % 24 == 0:
                 for action in self.past_action:
                     if action == "HIRE": reward += 0.25
-                    
-            for "WEED" in tiles:
-                reward -= 0.25
+            
+            for t in tiles: 
+                if t is not None and "WEED" in t:
+                    reward -= 0.25
                 
             # rewards animals near the center tile
             for y in range(len(obs['farms'][player_num]['tiles'])):
                 for x in range(len(obs['farms'][player_num]['tiles'][y])):
                     tile = obs['farms'][player_num]['tiles'][y][x]
+                    past_tile = self.past_obs['farms'][player_num]['tiles'][y][x]
                     if isinstance(tile, dict):
                         if tile.get("animal") is not None and tile.get("kind") in ("COOP", "PASTURE"):
                             if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
