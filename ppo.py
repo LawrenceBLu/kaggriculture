@@ -98,12 +98,12 @@ class ReplayBuffer():
   
 
 class PPO():
-  def __init__(self, env, grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
+  def __init__(self, env, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, adam_eps, clipping_eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device):
     self.replay_buffer = ReplayBuffer()
-    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders).to(device)
+    self.model = ActorCritic(grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders).to(device)
     self.env = Env(env)
     
-    self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr)
+    self.optim = torch.optim.AdamW(self.model.parameters(), lr=lr, eps=adam_eps)
 
     # self.old_model = ActorCritic(grid_size, cnn_dim, non_tile_len, linear_dim, lstm_dim, lstm_layers, action_dim).to(device)
     # self.old_model.load_state_dict(self.model.state_dict())
@@ -112,7 +112,7 @@ class PPO():
     self.lstm_layers = lstm_layers
     self.lstm_dim = lstm_dim
 
-    self.eps = eps
+    self.eps = clipping_eps
     self.device = device
     self.value_c = value_c
     self.entr_c = entr_c
@@ -138,6 +138,9 @@ class PPO():
   def reset_hidden(self):
     self.last_hidden = (torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device), torch.zeros(self.lstm_layers, 1, self.lstm_dim, device=self.device))
 
+  def load_weights(self, file="model_checkpoint.pt"):
+    weights = torch.load(file, weights_only=True)
+    self.model.load_state_dict(weights)
 
   def action_idx_to_string(self, farmer_action_idx, market_action_idx):
     action_dict = {}
@@ -189,7 +192,7 @@ class PPO():
     return farm_mask, market_mask
 
   def collect_rollout(self, n_rollout_steps):
-    print("COLLECTING ROLLOUT")
+    # print("COLLECTING ROLLOUT")
     n_steps = 0
     self.replay_buffer.clear()
     self.init_env()
@@ -247,11 +250,11 @@ class PPO():
       state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)
 
     self.replay_buffer.compute_gae(state_value, done, self.gae_lambda, self.gamma, self.device)
-    print("FINISHED ROLLOUT")
+    # print("FINISHED ROLLOUT")
 
 
   def train(self):
-    print("START TRAINING")
+    # print("START TRAINING")
     self.model.train()
     for _ in range(self.epochs):
       for batch_data in self.replay_buffer.get_batches(self.batch_size):
@@ -300,11 +303,17 @@ class PPO():
         # print(f"grad norm before clip: {total_norm}")
         self.optim.step()
 
-    print("DONE")
+    # print("DONE")
 
 
-  def save_model(self):
-    torch.save(self.model.state_dict(), "./model_checkpoint.pt")
+  def save_model(self, filename="./model_checkpoint.pt"):
+    torch.save(self.model.state_dict(), filename)
 
   def print_last_state(self):
     print(self.last_obs)
+
+  def store_results(self, iter):
+    with open("results.txt", "a") as f:
+      print(f"======= Iteration {iter} ========", file=f)
+      print(self.last_obs["reward"], file=f)
+      print("===========================\n", file=f)
