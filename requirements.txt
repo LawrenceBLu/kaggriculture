@@ -1,0 +1,5 @@
+gymnasium==1.2.0
+kaggle_environments==1.32.7
+numpy==2.5.3
+torch==2.14.0
+torchrl==0.14.0
