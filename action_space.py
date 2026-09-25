@@ -23,7 +23,8 @@ list_of_all_products = ["EGG", "MILK", "WOOL", "FERTILIZER"]
 ["COLLECT_FERTILIZER"]
 ["CARE"]
 ["DIG"]
-["PASS"]                 # 15th
+["PLANT", item, n]       # 5 placeable items
+["PASS"]                 
 """
 def farmhand_action_space():    
     actions = {}
@@ -44,7 +45,12 @@ def farmhand_action_space():
         actions[t] = ct
         ct += 1
     
-    remaining = ["PLANT", "WATER", "HARVEST", "FERTILIZE","BUILD_COOP","BUILD_PASTURE","FEED","COLLECT_FERTILIZER","CARE","DIG","PASS"]
+    for i in range(5):
+        t = tuple(('PLANT', list_of_all_crops[i]))
+        actions[t] = ct
+        ct += 1
+    
+    remaining = ["WATER", "HARVEST", "FERTILIZE","BUILD_COOP","BUILD_PASTURE","FEED","COLLECT_FERTILIZER","CARE","DIG","PASS"]
     for i in range(len(remaining)):
         actions[remaining[i]] = ct     
         ct += 1
