@@ -186,20 +186,21 @@ def invalid_action(obs, action, farmhand_index=None):
         if len(action) < 2: return invalid
         if obs['private']['shed'].get(item, 0) == 0: return invalid
         if not shed_adjacent: return invalid
-        if num <= 0: return invalid
+        # if num <= 0: return invalid
 
     if type_action == "PLACE":
         if len(action) < 2: return invalid
         if inventory.get(item, 0) == 0: return invalid
-        if num <= 0: return invalid
+        # if num <= 0: return invalid
 
-        if isinstance(tile, dict) and tile.get("kind") in ["COOP", "PASTURE"]:
+        if isinstance(tile, dict) and (tile.get("kind") in ["COOP", "PASTURE"]):
             if item in list_of_all_animals:
-                if tile.get("animal") is None: return invalid
                 if tile["kind"] == "COOP" and item != "GOOSE": return invalid
                 if tile["kind"] == "PASTURE" and item == "GOOSE": return invalid
-            elif not shed_adjacent:
-                return invalid
+                if tile.get("animal") is not None: return invalid
+
+            """ elif not shed_adjacent:
+                return invalid """
 
         elif not shed_adjacent:
             return invalid
@@ -214,27 +215,31 @@ def invalid_action(obs, action, farmhand_index=None):
         if sum(inventory.values()) == 0: return invalid
 
     if type_action == "PLANT":
-        if len(action) < 2: return invalid
-        if item not in list_of_all_crops: return invalid
+        # does not exist in action space
+        # if len(action) < 2: return invalid
+        
+        # action should not exist in viable actions
+        #   if item not in list_of_all_crops: return invalid
         if tile is not None: return invalid
         if obs['private']['seeds'].get(item, 0) == 0: return invalid
 
     if type_action == "WATER":
         if not isinstance(tile, dict): return invalid
         if tile.get("kind") != "PLANT": return invalid
-        if tile.get("watered_today", False): return invalid
+        if tile.get("watered_today", True): return invalid
 
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
         if tile.get("kind") == "PLANT":
             if tile.get("yield_units", 0) <= 0: return invalid
-            first_yield_day = list_of_first_yield_day_crops[list_of_all_crops.index(tile.get("crop"))]
+            """ first_yield_day = list_of_first_yield_day_crops[list_of_all_crops.index(tile.get("crop"))]
             if obs["day"] - tile["planted_day"] < first_yield_day:
-                return invalid
+                return invalid """
 
     if type_action == "FERTILIZE":
         if not isinstance(tile, dict): return invalid
         if tile.get("kind") != "PLANT": return invalid
+        if (tile.get("fertilized_until_day") - obs['day']) > 0: return invalid
         if inventory.get("FERTILIZER", 0) == 0: return invalid
 
     if type_action == "BUILD_COOP":
@@ -246,62 +251,77 @@ def invalid_action(obs, action, farmhand_index=None):
     if type_action == "FEED":
         if not isinstance(tile, dict): return invalid
         if tile.get("animal") is None: return invalid
-        if tile.get("fed_today", False): return invalid
+        if tile.get("fed_today", True): return invalid
         if inventory.get("WHEAT", 0) == 0: return invalid
 
     if type_action == "COLLECT_FERTILIZER":
         if not isinstance(tile, dict): return invalid
         if tile.get("animal") is None: return invalid
-        if not tile.get("fertilizer_available"): return invalid
+        if tile.get("fertilizer_available") == False: return invalid
 
     if type_action == "CARE":
         if not isinstance(tile, dict): return invalid
         if tile.get("animal") is None: return invalid
-        if tile.get("cared_today") is None or tile.get("cared_today") == True: return invalid
+        if tile.get("cared_today") == True: return invalid
 
     if type_action == "DIG":
         if tile is None: return invalid
-        if tile == "LOCKED": return invalid
-        if not (tile.get("kind") in ("PLANT", "WEED") or (tile.get("kind") in ("COOP", "PASTURE") and tile.get("animal") is None)): return invalid
-        if isinstance(tile, dict) and tile.get("animal") is not None: return invalid
+        # redundant
+        # if tile == "LOCKED": return invalid
+        if isinstance(tile, dict):
+            if tile.get("kind") not in ["PLANT", "WEED", "COOP", "PASTURE"]: return invalid
+            if tile.get("kind") in ["COOP", "PASTURE"]:
+                if tile.get("animal") is None: return invalid
+        # if isinstance(tile, dict) and tile.get("animal") is not None: return invalid
 
     if type_action == "BUY_SEED":
-        if len(action) < 3: return invalid
-        if num <= 0: return invalid
-        if item not in list_of_all_crops: return invalid
+        # should not have to exist, operation does not exist in action space
+        # if item not in list_of_all_crops: return invalid
+        # if len(action) < 3: return invalid
+        # if num <= 0: return invalid
+
         ### list_of_original_market_prices_crops_sell[action[2]]
-        if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
+        if money < obs['market']['inventory'][item] * num: return invalid
+        # if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
 
 
     if type_action == "BUY_PRODUCT":
-        if len(action) < 3: return invalid
-        if num <= 0: return invalid
+        # should not have to exist
+        # if len(action) < 3: return invalid
+        # if num <= 0: return invalid
         if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        buy_price = obs['market']['prices'][item]
-        if money < buy_price * action[2]: return invalid
+        if money < obs['market']['prices'][item] * num: return invalid
 
     if type_action == "BUY_ANIMAL":
-        if len(action) < 3: return invalid
-        if num <= 0: return invalid
+        # should not have to exist
+        # if len(action) < 3: return invalid
+        # if num <= 0: return invalid
         if item not in list_of_all_animals: return invalid
-        if money < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * action[2]: return invalid
+        if money < obs['market']['prices'][item] * num: return invalid
 
     if type_action == "SELL":
-        if len(action) < 3: return invalid
-        if num <= 0: return invalid
+        # should not have to exist
+        # if len(action) < 3: return invalid
+        # if num <= 0: return invalid
         if item not in list_of_all_sellable_resources: return invalid
-        if shed.get(item, 0) == 0: return invalid
+        
+        # AN ISSUE EXISTS WITH SELL, if we assume we take into account all inven of farmers
+        inven = 0
+        for i in range(len(obs["farms"][player_num]["hands"])):
+            inven += obs['private']['inventories'][i+1].get(item, 0)
+        if shed.get(item, 0) + inven == 0: return invalid
 
     if type_action == "HIRE":
         hire_cost = _fib(obs['farms'][player_num]['hires_today'])
         if money < hire_cost: return invalid
+        
+        # redundant but which one is right
         if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
-        if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
+        # if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])
-        if num_unlocked == 4: return invalid
-        land_cost = [1000, 2000, 4000][num_unlocked - 1]
+        land_cost = [1000, 2000, 4000][num_unlocked]
         if money < land_cost: return invalid
 
     return valid
