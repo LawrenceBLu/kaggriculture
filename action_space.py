@@ -1,8 +1,9 @@
 import global_vars
 import numpy as np
 
-list_of_all_pickupable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
+list_of_all_pickupable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER", "GOOSE", "COW", "SHEEP"]
 list_of_all_placeable_resources = ["WHEAT","CARROT","TOMATO","STRAWBERRY","MELON","GOOSE", "COW", "SHEEP"]
+list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "EGG", "MILK", "WOOL", "FERTILIZER"]
 list_of_all_crops = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
 list_of_all_animals = ['GOOSE', 'COW', 'SHEEP']
 list_of_all_products = ["EGG", "MILK", "WOOL", "FERTILIZER"]
@@ -34,18 +35,19 @@ def farmhand_action_space():
         actions[directions[i]] = ct
         ct += 1
     
-    for i in range(9):
+    for i in range(len(list_of_all_pickupable_resources)):
         for a in range(global_vars.MAX_ITEMS_PICKUP):
             t = tuple(('PICKUP', list_of_all_pickupable_resources[i], a+1))
             actions[t] = ct
             ct += 1
-
-    for i in range(8):
-        t = tuple(('PLACE', list_of_all_placeable_resources[i]))
+            
+    # place resource either in shed or coop
+    for i in range(len(list_of_all_pickupable_resources)):
+        t = tuple(('PLACE', list_of_all_pickupable_resources[i]))
         actions[t] = ct
         ct += 1
     
-    for i in range(5):
+    for i in range(len(list_of_all_crops)):
         t = tuple(('PLANT', list_of_all_crops[i]))
         actions[t] = ct
         ct += 1
@@ -73,12 +75,12 @@ def market_action_space():
     list_all_actions = []
     ct = 0
     for i in range(5):
-        for a in range(0, global_vars.MAX_NUM_BUY_SEED, 5):
+        for a in range(0, global_vars.MAX_NUM_BUY_SEED, 2):
             actions[tuple(("BUY_SEED", list_of_all_crops[i], a+1))] = ct
             ct += 1
     
     for i in range(1):
-        for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, 3):
+        for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, 2):
             actions[tuple(("BUY_PRODUCT", "WHEAT", a+1))] = ct
             actions[tuple(("BUY_PRODUCT", "FERTILIZER", a+1))] = ct
             ct += 1
@@ -88,14 +90,15 @@ def market_action_space():
             actions[tuple(("BUY_ANIMAL", list_of_all_animals[i], a+1))] = ct
             ct += 1
             
-    for i in range(5):
+    for i in range(len(list_of_all_sellable_resources)):
         for a in range(0, global_vars.MAX_NUM_SELL, 5):
-            actions[tuple(("SELL", list_of_all_pickupable_resources[i], a+1))] = ct
+            actions[tuple(("SELL", list_of_all_sellable_resources[i], a+1))] = ct
             ct += 1
     
     actions['HIRE'] = ct 
     ct += 1
     actions['BUY_LAND'] = ct
+    ct += 1
     actions["PASS"] = ct
     
     reversed_dict = {value: key for key, value in actions.items()}

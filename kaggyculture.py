@@ -1,7 +1,7 @@
 from kaggle_environments import make
 import numpy as np
 from torch.distributions.categorical import Categorical
-from global_vars import MARKET_SEED_PRICES
+from global_vars import MARKET_SEED_PRICES, MIN_MONEY
 import torch
 
 # HELPFUL DICTIONARIES
@@ -108,7 +108,7 @@ def setup_tile_obs(obs):
     for y in range(10):
         for x in range(10):
             tile = obs['farms'][player_num]['tiles'][y][x]
-            feature_vector = np.zeros(26)
+            feature_vector = np.zeros(25)
             if type(tile) == str or tile is None:
                 if tile == None:
                     feature_vector[0] = 1
@@ -121,16 +121,16 @@ def setup_tile_obs(obs):
                     feature_vector[3+list_of_all_crops.index(tile['crop'])] = 1
                     steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
                     watered_today = int(tile['watered_today'])
-                    consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
+                    # consecutive_unwatered = tile['consecutive_unwatered']/MAX_UNWATERED_DAYS
                     yield_units = tile['yield_units']/list_of_max_yield_crops[list_of_all_crops.index(tile['crop'])]                    
                     max_lifespan_step = (tile['max_lifespan_step'] - obs['step']) / list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
                     fertilized_until_day = max(0, (tile['fertilized_until_day'] - obs['day'])/3)
-                    feature_vector[len(list_of_all_crops)+3:len(list_of_all_crops)+10] = [steps_since_planted_norm, watered_today, consecutive_unwatered, yield_units, max_lifespan_step, fertilized_until_day]
+                    feature_vector[len(list_of_all_crops)+3:len(list_of_all_crops)+8] = [steps_since_planted_norm, watered_today, yield_units, max_lifespan_step, fertilized_until_day]
                 elif (tile['kind'] == 'COOP' or tile['kind'] == 'PASTURE'):
                     if tile['kind'] == 'COOP':
-                        feature_vector[len(list_of_all_crops)+10] = 1
+                        feature_vector[len(list_of_all_crops)+9] = 1
                     elif tile['kind'] == 'PASTURE':
-                        feature_vector[len(list_of_all_crops)+11] = 1
+                        feature_vector[len(list_of_all_crops)+10] = 1
                     if tile.get("animals", None) is not None:
                         feature_vector[len(list_of_all_crops)+11+list_of_all_animals.index(tile['animals'])] = 1
 
@@ -142,7 +142,7 @@ def setup_tile_obs(obs):
                         fertilizer_available = int(tile['fertilizer_available'])
                         pending_care_bonus = tile['pending_care_bonus']/list_of_max_yield_animals[list_of_all_animals.index(tile['animal'])]                    
                         animal_vector_ind = len(list_of_all_crops)+11+len(list_of_all_animals)
-                        feature_vector[animal_vector_ind:animal_vector_ind+7] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
+                        feature_vector[animal_vector_ind:animal_vector_ind+6] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
             zero_matrix_copy[y][x] = feature_vector
     return zero_matrix_copy
 
@@ -174,22 +174,30 @@ def invalid_action(obs, action, farmhand_index=None):
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
 
-    if tile == "LOCKED": return invalid
-
     if len(action) >= 2:
         item = action[1]
         num = 1
         if len(action) == 3:
             num = action[2]
+    
+    if type_action == "NORTH" and y == 0: return invalid
+    if type_action == "SOUTH" and y == 9: return invalid
+    elif type_action == "SOUTH" and obs['farms'][player_num]['tiles'][min(y+1, 9)][x] == "LOCKED" and obs['farms'][player_num]['tiles'][min(y, 9)][x] == "LOCKED": return invalid
+    if type_action == "EAST" and x == 9: return invalid
+    elif type_action == "EAST" and obs['farms'][player_num]['tiles'][y][min(x+1, 9)] == "LOCKED" and obs['farms'][player_num]['tiles'][min(x, 9)][x] == "LOCKED": return invalid
+    if type_action == "WEST" and x == 0: return invalid
 
+    if type_action not in ["NORTH", "SOUTH", "EAST", "WEST"] and tile == "LOCKED": return invalid
+            
     if type_action == "PICKUP":
-        if len(action) < 2: return invalid
+        # if len(action) < 2: return invalid
         if obs['private']['shed'].get(item, 0) == 0: return invalid
+        if isinstance(tile, dict) and tile.get("kind") in ["COOP", "PASTURE"]: return invalid
         if not shed_adjacent: return invalid
         # if num <= 0: return invalid
 
     if type_action == "PLACE":
-        if len(action) < 2: return invalid
+        # if len(action) < 2: return invalid
         if inventory.get(item, 0) == 0: return invalid
         # if num <= 0: return invalid
 
@@ -204,12 +212,7 @@ def invalid_action(obs, action, farmhand_index=None):
 
         elif not shed_adjacent:
             return invalid
-
-    if type_action == "NORTH" and y == 0: return invalid
-    if type_action == "SOUTH" and y == 9: return invalid
-    if type_action == "EAST" and x == 9: return invalid
-    if type_action == "WEST" and x == 0: return invalid
-
+        
     if type_action == "DROP":
         if not shed_adjacent: return invalid
         if sum(inventory.values()) == 0: return invalid
@@ -230,9 +233,12 @@ def invalid_action(obs, action, farmhand_index=None):
 
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
-        if tile.get("kind") == "PLANT":
-            if tile.get("yield_units", 0) <= 0: return invalid
-            """ first_yield_day = list_of_first_yield_day_crops[list_of_all_crops.index(tile.get("crop"))]
+        if tile.get("yield_units", 0) <= 0: return invalid
+        # if tile.get("kind") == "PLANT":
+        #     if tile.get("yield_units") <= 0: return invalid
+        # elif tile.get("kind") in ["COOP", "PASTURE"]:
+        #     if tile.get("yield_units") <= 0: return invalid
+        """ first_yield_day = list_of_first_yield_day_crops[list_of_all_crops.index(tile.get("crop"))]
             if obs["day"] - tile["planted_day"] < first_yield_day:
                 return invalid """
 
@@ -269,10 +275,11 @@ def invalid_action(obs, action, farmhand_index=None):
         # redundant
         # if tile == "LOCKED": return invalid
         if isinstance(tile, dict):
-            if tile.get("kind") not in ["PLANT", "WEED", "COOP", "PASTURE"]: return invalid
-            if tile.get("kind") in ["COOP", "PASTURE"]:
-                if tile.get("animal") is None: return invalid
-        # if isinstance(tile, dict) and tile.get("animal") is not None: return invalid
+            if tile.get("kind") in ["COOP", "PLANT", "PASTURE"]: return invalid
+            # if tile.get("kind") not in ["PLANT", "WEED", "COOP", "PASTURE"]: return invalid
+            # if tile.get("kind") in ["COOP", "PASTURE"]:
+                # if tile.get("animal") is None: return invalid
+         # if isinstance(tile, dict) and tile.get("animal") is not None: return invalid
 
     if type_action == "BUY_SEED":
         # should not have to exist, operation does not exist in action space
@@ -281,7 +288,7 @@ def invalid_action(obs, action, farmhand_index=None):
         # if num <= 0: return invalid
 
         ### list_of_original_market_prices_crops_sell[action[2]]
-        if money < obs['market']['inventory'][item] * num: return invalid
+        if money + MIN_MONEY < obs['market']['prices'][item] * num: return invalid
         # if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
 
 
@@ -289,15 +296,15 @@ def invalid_action(obs, action, farmhand_index=None):
         # should not have to exist
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
-        if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        if money < obs['market']['prices'][item] * num: return invalid
+        # if item not in ["WHEAT", "FERTILIZER"]: return invalid
+        if money + MIN_MONEY < obs['market']['prices'][item] * num: return invalid
 
     if type_action == "BUY_ANIMAL":
         # should not have to exist
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
-        if item not in list_of_all_animals: return invalid
-        if money < obs['market']['prices'][item] * num: return invalid
+        # if item not in list_of_all_animals: return invalid
+        if money + MIN_MONEY < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num: return invalid
 
     if type_action == "SELL":
         # should not have to exist
@@ -315,13 +322,13 @@ def invalid_action(obs, action, farmhand_index=None):
         hire_cost = _fib(obs['farms'][player_num]['hires_today'])
         if money < hire_cost: return invalid
         
-        # redundant but which one is right
+        # redundant but which one is right, why do u need both?
         if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
-        # if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
+        if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])
-        land_cost = [1000, 2000, 4000][num_unlocked]
+        land_cost = [1000, 2000, 4000][num_unlocked-1]
         if money < land_cost: return invalid
 
     return valid
@@ -369,10 +376,12 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
                 return list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
 
         # Update money after buying something
-        if type(action_str) == tuple:
-            if "BUY_PRODUCT" in action_str[0]:
-                internal_obs["farms"][player_num]["money"] -= internal_obs["market"]["prices"][action_str[1]] * action_str[2]
-            else:
+        if type(action_str) == tuple and "BUY" in action_str[0]:
+            if action_str[0] == "BUY_PRODUCT":
+                internal_obs["farms"][player_num]["money"] -= internal_obs['market']['prices'][action_str[1]] * action_str[2]
+            elif action_str[0] == "BUY_ANIMAL":
+                internal_obs["farms"][player_num]["money"] -= list_of_original_market_prices_animals_buy[list_of_all_animals.index(action_str[1])]* action_str[2]                
+            elif action_str[0] == "BUY_SEED":
                 internal_obs["farms"][player_num]["money"] -= MARKET_SEED_PRICES[action_str[1]] * action_str[2]
             mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
 
