@@ -2,6 +2,7 @@ MAX_NUM_BUY_SEED = 3
 MAX_NUM_BUY_PRODUCT = 0
 MAX_NUM_BUY_ANIMAL = 0
 
+# ad
 # action_idx - max/interval
 
 MAX_NUM_SELL = 10
