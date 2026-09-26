@@ -10,6 +10,7 @@ list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "ME
 list_of_all_crops = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
 list_of_all_animals = ['GOOSE', 'COW', 'SHEEP']
 list_of_all_shops = ["BAKERY", "PIZZA_SHOP", "BRUNCH_SPOT", "YARN_STORE", "ICE_CREAM_SHOP", "PET_CAFE", "SMOOTHIE_SHOP", "FARMERS_MARKET"]
+list_of_all_harvestable = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "GOOSE", "COW", "SHEEP"]
 
 # market info
 list_of_market_deviation = [400, 450, 200, 100, 300, 332, 122, 105, 200]
@@ -19,10 +20,11 @@ list_of_original_market_prices_animals_buy = [300, 400, 500]
 
 # crop info
 list_of_first_yield_day_crops = [2, 4, 8, 10, 10]
+list_of_first_yield_day_animals = [4, 8, 6]
 list_of_max_yield_steps_crops = [96, 72, 264, 384, 240]
 list_of_max_yield_crops = [6, 4, 4, 4, 6]
 list_of_max_yield_animals = [4, 6, 6]
-list_of_max_yield_steps_animals = []
+list_of_first_yield_combined = [2, 4, 8, 10, 10, 4, 8, 6]
 
 list_of_shop_types = ['BAKERY', "PIZZA SHOP", "BRUNCH SPOT", "YARN STORE", "ICE CREAM SHOP", "PET CAFE", "SMOOTHIE SHOP", "FARMERS MARKET"]
 
@@ -149,6 +151,7 @@ def setup_tile_obs(obs):
 # action mask
 
 def invalid_action(obs, action, farmhand_index=None):
+    # print(action)
     invalid, valid = False, True
     if type(action) in [list, tuple]: type_action = action[0]
     else: type_action = action
@@ -161,11 +164,11 @@ def invalid_action(obs, action, farmhand_index=None):
     shed = obs['private']['shed']
 
     if farmhand_index is None:
-        x, y = obs['farms'][player_num]['farmer']
+        y, x = obs['farms'][player_num]['farmer']
         inventory = obs['private']['inventories'][0]
     else:
         if farmhand_index < len(obs['farms'][player_num]['hands']):
-            x, y = obs['farms'][player_num]['hands'][farmhand_index]
+            y, x = obs['farms'][player_num]['hands'][farmhand_index]
             inventory = obs['private']['inventories'][farmhand_index + 1]
         else:
             if action != "PASS":
@@ -173,8 +176,7 @@ def invalid_action(obs, action, farmhand_index=None):
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
-
-    if len(action) >= 2:
+    if type(action) is tuple and len(action) >= 2:
         item = action[1]
         num = 1
         if len(action) == 3:
@@ -233,7 +235,10 @@ def invalid_action(obs, action, farmhand_index=None):
 
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
-        if tile.get("yield_units", 0) <= 0: return invalid
+        if tile.get('kind') == "PLANT":
+            if obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('crop'))]: return invalid
+        elif tile.get('kind') in ["COOP", "PASTURE"]:
+            if tile.get("animal", None) is not None and obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('animal', None))]: return invalid            
         # if tile.get("kind") == "PLANT":
         #     if tile.get("yield_units") <= 0: return invalid
         # elif tile.get("kind") in ["COOP", "PASTURE"]:
