@@ -5,6 +5,7 @@ import torch.nn as nn
 from ppo import PPO
 from env import KaggleEnvWrapper
 import gymnasium as gym
+from action_space import farmhand_action_space, market_action_space
 
 def make_env(env_name, num_channels, non_tile_len, opponent_agent="random"):
     def _init():
@@ -13,16 +14,16 @@ def make_env(env_name, num_channels, non_tile_len, opponent_agent="random"):
     return _init
 
 def run():
-  grid_size = 26
+  grid_size = 25
   cnn_dim = 256
   non_tile_len = 97
   non_tile_dim = 64
   linear_dim = 256
   lstm_dim = 256
   lstm_layers = 1
-  farm_action_dim = 113
+  farm_action_dim = len(farmhand_action_space())
   num_hands = 5
-  market_action_dim = 41
+  market_action_dim = len(market_action_space())
   num_orders = 10
   batch_size = 360
   lr = 1e-4
@@ -35,17 +36,17 @@ def run():
   gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  num_envs = 5
+  num_envs = 2
   envs = gym.vector.AsyncVectorEnv([
       make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="random")
       for i in range(num_envs)
   ])
   
-  ppo = PPO(envs, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, adam_eps, clipping_eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
+  ppo = PPO(envs, num_envs, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, adam_eps, clipping_eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
   num_rollouts = 5
   max_steps = (720 * num_rollouts) - 1
-  num_iterations = 30
+  num_iterations = 1
 
 
   for i in range(num_iterations):

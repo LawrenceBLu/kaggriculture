@@ -28,7 +28,7 @@ class CNN(nn.Module):
         return x
 
 class ActorCritic(nn.Module):
-    def __init__(self, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders):
+    def __init__(self, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, num_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device):
         super().__init__()
         self.cnn = CNN(grid_size, cnn_dim)
         self.non_tile_feat = nn.Sequential(
@@ -67,6 +67,7 @@ class ActorCritic(nn.Module):
             ep_starts = ep_starts.reshape((n_seq, -1)).swapaxes(0, 1)
             features = x.reshape((n_seq, -1, self.linear_dim)).swapaxes(0, 1)
             for feats, start in zip(features, ep_starts):
+                # print("start:", start.shape, "n_seq:", n_seq, "hidden[0]:", hidden[0].shape)
                 out, hidden = self.lstm(feats.unsqueeze(dim=1),
                     (
                         (1.0 - start).view(1, n_seq, 1) * hidden[0],
@@ -78,48 +79,52 @@ class ActorCritic(nn.Module):
             lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
         return lstm_out, hidden
 
-    def compute_actions(self, farm_logits, market_logits, farm_mask, market_mask, internal_obs):
-        farmer_vec = farm_logits.reshape(self.num_hands+1, -1)
-        market_vec = market_logits.reshape(self.num_orders, -1)
+    def compute_actions(self, farm_logits, market_logits, farm_mask, market_mask, obs):
+        farmer_vec = farm_logits.reshape(farm_logits.size(0), self.num_hands+1, -1).permute(1,0,2)
+        market_vec = market_logits.reshape(market_logits.size(0), self.num_orders, -1).permute(1,0,2)
 
-        all_farm_actions = farmhand_action_space()
-        all_market_actions = market_action_space()
+        farm_action_space = farmhand_action_space()
+        market_space = market_action_space()
 
-        farm_actions = []
-        market_actions = []
+        all_farm_actions = []
+        all_market_actions = []
 
-        farm_masks = []
-        market_masks = []
-        log_probs = []
-        
+        all_farm_masks = []
+        all_market_masks = []
+        all_log_probs = []
         for farmer_index, farmer_logits in enumerate(farmer_vec):
-            farm_masks.append(farm_mask)
-            farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask, device=self.device))
-            farm_action = farm_dist.sample()
+            all_farm_masks.append(farm_mask)
+            farm_dists = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask, device=self.device))
+            farm_actions = farm_dists.sample()
             if farmer_index < (farmer_vec.shape[0] - 1):
-                farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
-                farm_action_str = all_farm_actions[int(farm_action.item())]
-                farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
+                farm_masks = [list(map(lambda x: invalid_action(internal_obs, x, farmer_index), farm_action_space.values())) for internal_obs in obs]
+                farm_action_strs = [farm_action_space[int(farm_action.item())] for farm_action in farm_actions]
+                farm_masks = [update_mask(farm_mask, internal_obs, farm_action_str, farm_action_space, index=farmer_index, is_farm=True) for farm_mask, internal_obs, farm_action_str in zip(farm_masks, obs, farm_action_strs)]
 
-            log_prob = farm_dist.log_prob(farm_action)
-            farm_actions.append(farm_action)
-            log_probs.append(log_prob)
+            log_probs = farm_dists.log_prob(farm_actions)
+            all_farm_actions.append(farm_actions)
+            all_log_probs.append(log_probs)
 
         for market_index, market_logits in enumerate(market_vec):
-            market_masks.append(market_mask)
-            market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask, device=self.device))
-            market_action = market_dist.sample()
+            all_market_masks.append(market_mask)
+            market_dists = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask, device=self.device))
+            market_actions = market_dists.sample()
             if market_index < (market_vec.shape[0] - 1):
-                market_mask = list(map(lambda x: invalid_action(internal_obs, x), all_market_actions.values()))
-                market_action_str = all_market_actions[int(market_action.item())]
-                market_mask = update_mask(market_mask, internal_obs, (market_action, market_action_str), all_market_actions, index=market_index)
+                market_masks = [list(map(lambda x: invalid_action(internal_obs, x), market_space.values())) for internal_obs in obs]
+                market_action_strs = [market_space[int(market_action.item())] for market_action in market_actions]
+                market_masks = [update_mask(market_mask, internal_obs, (market_index, market_action_str), market_space, index=market_index) for market_mask, internal_obs, market_action_str in zip(market_masks, obs, market_action_strs)]
 
-            log_prob = market_dist.log_prob(market_action)
-            market_actions.append(market_action)
-            log_probs.append(log_prob)
+            log_probs = market_dists.log_prob(market_actions)
+            all_market_actions.append(market_actions)
+            all_log_probs.append(log_probs)
 
-        log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
-        return farm_actions, market_actions, log_p, farm_masks, market_masks
+        all_log_p = torch.stack(all_log_probs, dim=-1).sum(dim=-1)
+        all_farm_actions = torch.stack(all_farm_actions, dim=-1)
+        all_market_actions = torch.stack(all_market_actions, dim=-1)
+        all_farm_masks = [list(mask) for mask in zip(*all_farm_masks)]
+        all_market_masks = [list(mask) for mask in zip(*all_market_masks)]
+        
+        return all_farm_actions, all_market_actions, all_log_p, all_farm_masks, all_market_masks
 
     def compute_entropy(self, farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks):
         hands_vec = farm_logits.reshape(farm_logits.size(0), self.num_hands+1, -1)

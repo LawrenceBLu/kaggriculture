@@ -25,6 +25,7 @@ class KaggleEnvWrapper(gym.Env):
         self.past_action = None
         self.done = False
         self.dict_of_lists = load_dict_of_lists()
+        self.max_money = 0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -42,14 +43,14 @@ class KaggleEnvWrapper(gym.Env):
             obs, info = self.reset()
             state = self._extract_obs(obs)
             self.past_market_action = None
-            return state, 0, False, info
+            return state, 0, False, False, info
         obs, _, self.done, _ = self.trainer.step(action)
         state = self._extract_obs(obs)
         reward = self.get_reward(obs)
         self.past_obs = obs
         if self.done == True:
-            return state, reward, True, {"raw_obs": obs}
-        return state, reward, False, {"raw_obs": obs}
+            return state, reward, True, False, {"raw_obs": obs}
+        return state, reward, False, False, {"raw_obs": obs}
 
     def _extract_obs(self, obs):
         grid = setup_tile_obs(obs)
@@ -121,7 +122,7 @@ class KaggleEnvWrapper(gym.Env):
 
                     elif type(past_tile) == str and past_tile == "WEED" and self.past_action == "DIG" :
                         reward += 0.5
-                    if type(past_tile == dict):
+                    if type(past_tile) == dict:
                         if "plant" in past_tile.keys() and past_tile['watered_today'] == False and self.past_action == "WATER":
                             reward += 0.2
                         elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and self.past_action == "FERTILIZE":
