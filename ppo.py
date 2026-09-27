@@ -86,7 +86,7 @@ class ReplayBuffer():
       old_log_probs = torch.stack(self.log_probs, dim=0)
       old_dones = torch.from_numpy(np.array(self.dones)).to(dtype=torch.float32)
       old_farm_masks = torch.stack([torch.as_tensor(farm_mask) for farm_mask in self.farm_masks], dim=0)
-      old_market_masks = torch.stack([torch.as_tensor(market_mask) for market_mask in self.market_masks], dim=0)
+      old_market_masks = torch.stack([torch.as_tensor(np.array(market_mask)) for market_mask in self.market_masks], dim=0)
       h_stacks = torch.stack(self.h_states, dim=0)
       c_stacks = torch.stack(self.c_states, dim=0)
 

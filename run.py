@@ -37,7 +37,7 @@ def run():
   gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  num_envs = 2
+  num_envs = 10
   envs = gym.vector.AsyncVectorEnv([
       make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="random")
       for i in range(num_envs)

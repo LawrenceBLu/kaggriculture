@@ -7,8 +7,6 @@ from torchrl.modules import MaskedCategorical
 from kaggyculture import update_mask, invalid_action
 from action_space import market_action_space, farmhand_action_space
 
-#heehee
-
 class CNN(nn.Module):
     def __init__(self, input_channels, output_len):
         super().__init__()
@@ -50,45 +48,8 @@ class ActorCritic(nn.Module):
 
         self.device = device
 
-    # def _process_sequence(self, grid, non_tiles, hidden, ep_starts, fwd_pass = False):
-    #     # FINISH handling lstm state resets
-    #     if fwd_pass == True:
-    #         B, T, C, H, W = grid.shape
-    #         grid = grid.reshape(B*T, C, H, W)
-    #         grid_state = self.cnn(grid)
-    #         grid_state = grid_state.reshape(B, T, -1)
-    #     else:
-    #         grid_state = self.cnn(grid)
-
-    #     non_tile_state = self.non_tile_feat(non_tiles)
-    #     state = torch.cat([grid_state, non_tile_state], dim=-1)
-    #     x = self.relu(self.pre_lstm(state))
-
-    #     n_seq = hidden[0].shape[1]
-    #     ep_starts = ep_starts.reshape((n_seq, -1)).swapaxes(0, 1)
-    #     features = x.reshape((n_seq, -1, self.linear_dim)).swapaxes(0, 1)
-
-    #     if torch.all(ep_starts == 0.0):
-    #         lstm_out, hidden = self.lstm(features, hidden)
-    #         lstm_out = torch.flatten(lstm_out, start_dim=0, end_dim=1)
-    #     else:
-    #         lstm_out = []
-
-    #         for feats, start in zip(features, ep_starts):
-    #             # print("start:", start.shape, "n_seq:", n_seq, "hidden[0]:", hidden[0].shape)
-    #             out, hidden = self.lstm(feats.unsqueeze(dim=1),
-    #                 (
-    #                     (1.0 - start).view(1, n_seq, 1) * hidden[0],
-    #                     (1.0 - start).view(1, n_seq, 1) * hidden[1]
-    #                 ),
-    #             )
-    #             lstm_out += [out]
-
-    #         lstm_out = torch.flatten(torch.cat(lstm_out, dim=1), start_dim=0, end_dim=1)
-    #     return lstm_out, hidden
 
     def _process_sequence(self, grid, non_tiles, hidden, ep_starts):
-
         if grid.dim() == 4:
             rollout = True
 
@@ -108,21 +69,15 @@ class ActorCritic(nn.Module):
         if non_tiles.dim() == 2:
             non_tiles = non_tiles.reshape(B, T, -1)
 
-
         ep_starts = ep_starts.reshape(B, T)
 
-        grid_flat = torch.flatten(
-            grid,
-            start_dim=0,
-            end_dim=1
-        )
+        grid_flat = torch.flatten(grid, start_dim=0, end_dim=1)
 
         grid_state = self.cnn(grid_flat)
         grid_state = grid_state.reshape(B, T, -1)
         non_tile_state = self.non_tile_feat(non_tiles)
         state = torch.cat([grid_state, non_tile_state], dim=-1)
         x = self.relu(self.pre_lstm(state))
-
         h, c = hidden
 
         if h.shape[1] != B:
@@ -138,40 +93,27 @@ class ActorCritic(nn.Module):
             outputs = []
 
             for t in range(T):
-                keep_mask = (
-                    1.0 - ep_starts[:, t].float()
-                ).view(1, B, 1)
+                keep_mask = (1.0 - ep_starts[:, t].float()).view(1, B, 1)
 
-                keep_mask = keep_mask.to(
-                    device=h.device,
-                    dtype=h.dtype
-                )
+                keep_mask = keep_mask.to(device=h.device,dtype=h.dtype)
 
                 h = h * keep_mask
                 c = c * keep_mask
 
                 step_x = x[:, t:t + 1, :]
 
-                step_out, (h, c) = self.lstm(
-                    step_x,
-                    (h, c)
-                )
+                step_out, (h, c) = self.lstm(step_x, (h, c))
 
                 outputs.append(step_out)
 
             lstm_out = torch.cat(outputs, dim=1)
-
             hidden = (h, c)
 
         if rollout:
             lstm_out = lstm_out.squeeze(1)
 
         else:
-            lstm_out = torch.flatten(
-                lstm_out,
-                start_dim=0,
-                end_dim=1
-            )
+            lstm_out = torch.flatten(lstm_out, start_dim=0, end_dim=1)
 
         return lstm_out, hidden
 
@@ -202,14 +144,16 @@ class ActorCritic(nn.Module):
             all_farm_actions.append(farm_actions)
             all_log_probs.append(log_probs)
 
+        persistent_market_masks = np.array(market_masks)
         for market_index, market_logits in enumerate(market_vec):
-            all_market_masks.append(market_masks)
-            market_dists = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_masks, device=self.device))
+            all_market_masks.append(persistent_market_masks)
+            market_dists = MaskedCategorical(logits=market_logits, mask=torch.from_numpy(persistent_market_masks).to(device=self.device))
             market_actions = market_dists.sample()
             if market_index < (market_vec.shape[0] - 1):
                 market_masks = [list(map(lambda x: invalid_action(internal_obs, x), market_space.values())) for internal_obs in obs]
                 market_action_strs = [market_space[int(market_action.item())] for market_action in market_actions]
                 market_masks = [update_mask(market_mask, internal_obs, (market_action.item(), market_action_str), market_space, index=market_index) for market_mask, internal_obs, market_action, market_action_str in zip(market_masks, obs, market_actions, market_action_strs)]
+                persistent_market_masks = persistent_market_masks * market_masks
 
             log_probs = market_dists.log_prob(market_actions)
             all_market_actions.append(market_actions)
@@ -244,7 +188,6 @@ class ActorCritic(nn.Module):
         farm_log_valid = torch.log(farm_num_valid.float())
         safe_divisor = torch.where(farm_num_valid > 1, farm_log_valid, torch.ones_like(farm_log_valid))
 
-        # log_num_valid.append(farm_log_valid.clamp(min=1e-8))
         log_num_valid.append(safe_divisor)
 
         entropies.append(farm_entropy)
@@ -268,9 +211,6 @@ class ActorCritic(nn.Module):
         normed = torch.cat(entropies, dim=-1)/torch.cat(log_num_valid, dim=-1)
         entropy = normed.mean(dim=-1).mean()
 
-        # print("farm_num_valid min:", farm_num_valid.min().item())
-        # print("log_num_valid min:", torch.cat(log_num_valid, dim=-1).min().item())
-
         return log_p, entropy
 
     def forward(self, grid, non_tiles, hidden, ep_starts, farm_mask, market_mask, internal_obs):
@@ -280,30 +220,18 @@ class ActorCritic(nn.Module):
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
         farm_actions, market_actions, log_prob, farm_masks, market_masks = self.compute_actions(farm_logits, market_logits, farm_mask, market_mask, internal_obs)
-        # dist = Categorical(logits = logits)
-        # action = dist.sample()
-        # log_prob = dist.log_prob(action)
 
         state_value = self.critic_head(lstm_out)
 
         return farm_actions, market_actions, farm_masks, market_masks, log_prob, state_value, hidden
 
     def evaluate(self, grid, non_tiles, hiddens, farm_actions, market_actions, farm_masks, market_masks, ep_starts):
-        # for name, p in self.cnn.named_parameters():
-        #     if not torch.isfinite(p).all():
-        #         print(f"{name} is already non-finite BEFORE this forward pass")
         lstm_out, _ = self._process_sequence(grid, non_tiles, hiddens, ep_starts)
-        # assert torch.isfinite(lstm_out).all(), "lstm_out has nan/inf"
         
         farm_logits = self.actor_farm_head(lstm_out)
         market_logits = self.actor_market_head(lstm_out)
-
         
         log_probs, entropy = self.compute_entropy(farm_logits, market_logits, farm_actions, market_actions, farm_masks, market_masks)
-
-        # dist = Categorical(logits = logits)
-        # log_probs = dist.log_prob(actions)
-        # entropy = dist.entropy()
 
         state_values = self.critic_head(lstm_out).squeeze(-1)
 
