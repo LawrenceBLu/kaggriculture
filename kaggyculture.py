@@ -1,7 +1,7 @@
 from kaggle_environments import make
 import numpy as np
 from torch.distributions.categorical import Categorical
-from global_vars import MARKET_SEED_PRICES, MIN_MONEY
+import global_vars
 import torch
 
 # HELPFUL DICTIONARIES
@@ -10,6 +10,7 @@ list_of_all_sellable_resources = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "ME
 list_of_all_crops = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON"]
 list_of_all_animals = ['GOOSE', 'COW', 'SHEEP']
 list_of_all_shops = ["BAKERY", "PIZZA_SHOP", "BRUNCH_SPOT", "YARN_STORE", "ICE_CREAM_SHOP", "PET_CAFE", "SMOOTHIE_SHOP", "FARMERS_MARKET"]
+list_of_all_harvestable = ["WHEAT", "CARROT", "TOMATO", "STRAWBERRY", "MELON", "GOOSE", "COW", "SHEEP"]
 
 # market info
 list_of_market_deviation = [400, 450, 200, 100, 300, 332, 122, 105, 200]
@@ -19,10 +20,11 @@ list_of_original_market_prices_animals_buy = [300, 400, 500]
 
 # crop info
 list_of_first_yield_day_crops = [2, 4, 8, 10, 10]
+list_of_first_yield_day_animals = [4, 8, 6]
 list_of_max_yield_steps_crops = [96, 72, 264, 384, 240]
 list_of_max_yield_crops = [6, 4, 4, 4, 6]
 list_of_max_yield_animals = [4, 6, 6]
-list_of_max_yield_steps_animals = []
+list_of_first_yield_combined = [2, 4, 8, 10, 10, 4, 8, 6]
 
 list_of_shop_types = ['BAKERY', "PIZZA SHOP", "BRUNCH SPOT", "YARN STORE", "ICE CREAM SHOP", "PET CAFE", "SMOOTHIE SHOP", "FARMERS MARKET"]
 
@@ -149,6 +151,7 @@ def setup_tile_obs(obs):
 # action mask
 
 def invalid_action(obs, action, farmhand_index=None):
+    # print(action)
     invalid, valid = False, True
     if type(action) in [list, tuple]: type_action = action[0]
     else: type_action = action
@@ -161,11 +164,11 @@ def invalid_action(obs, action, farmhand_index=None):
     shed = obs['private']['shed']
 
     if farmhand_index is None:
-        x, y = obs['farms'][player_num]['farmer']
+        y, x = obs['farms'][player_num]['farmer']
         inventory = obs['private']['inventories'][0]
     else:
         if farmhand_index < len(obs['farms'][player_num]['hands']):
-            x, y = obs['farms'][player_num]['hands'][farmhand_index]
+            y, x = obs['farms'][player_num]['hands'][farmhand_index]
             inventory = obs['private']['inventories'][farmhand_index + 1]
         else:
             if action != "PASS":
@@ -173,8 +176,7 @@ def invalid_action(obs, action, farmhand_index=None):
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
-
-    if len(action) >= 2:
+    if type(action) is tuple and len(action) >= 2:
         item = action[1]
         num = 1
         if len(action) == 3:
@@ -233,7 +235,10 @@ def invalid_action(obs, action, farmhand_index=None):
 
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
-        if tile.get("yield_units", 0) <= 0: return invalid
+        if tile.get('kind') == "PLANT":
+            if obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('crop'))]: return invalid
+        elif tile.get('kind') in ["COOP", "PASTURE"]:
+            if tile.get("animal", None) is not None and obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('animal', None))]: return invalid            
         # if tile.get("kind") == "PLANT":
         #     if tile.get("yield_units") <= 0: return invalid
         # elif tile.get("kind") in ["COOP", "PASTURE"]:
@@ -288,7 +293,7 @@ def invalid_action(obs, action, farmhand_index=None):
         # if num <= 0: return invalid
 
         ### list_of_original_market_prices_crops_sell[action[2]]
-        if money + MIN_MONEY < obs['market']['prices'][item] * num: return invalid
+        if money + global_vars.MIN_MONEY < obs['market']['prices'][item] * num: return invalid
         # if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
 
 
@@ -297,14 +302,14 @@ def invalid_action(obs, action, farmhand_index=None):
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
         # if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        if money + MIN_MONEY < obs['market']['prices'][item] * num: return invalid
+        if money + global_vars.MIN_MONEY < obs['market']['prices'][item] * num: return invalid
 
     if type_action == "BUY_ANIMAL":
         # should not have to exist
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
         # if item not in list_of_all_animals: return invalid
-        if money + MIN_MONEY < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num: return invalid
+        if money + global_vars.MIN_MONEY < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num: return invalid
 
     if type_action == "SELL":
         # should not have to exist
@@ -367,9 +372,9 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
             return mask
     else:
         action_idx, action_str = action
-        if index == 0:
-            internal_obs["past_market_actions"] = set()
-
+        action_idx = int(action_idx)
+        if index == 0: internal_obs["past_market_actions"] = set()
+                    
         if action_str == "HIRE":
             internal_obs["num_hands"] += 1
             if internal_obs["num_hands"] >= 5:
@@ -382,20 +387,55 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
             elif action_str[0] == "BUY_ANIMAL":
                 internal_obs["farms"][player_num]["money"] -= list_of_original_market_prices_animals_buy[list_of_all_animals.index(action_str[1])]* action_str[2]                
             elif action_str[0] == "BUY_SEED":
-                internal_obs["farms"][player_num]["money"] -= MARKET_SEED_PRICES[action_str[1]] * action_str[2]
+                internal_obs["farms"][player_num]["money"] -= global_vars.MARKET_SEED_PRICES[action_str[1]] * action_str[2]
             mask = list(map(lambda x: invalid_action(internal_obs, x), action_space.values()))
 
+        offset = 0
         # No duplicate action
-        if index > 0:
-            for act in internal_obs["past_market_actions"]:
-                if "BUY_SEED" in act[1]:
-                    mask[act[0]:act[0]+5] = [False] * 5
-                elif "BUY_PRODUCT" in act[1]:
-                    mask[act[0]:act[0]+3] = [False] * 3
-                elif "BUY_ANIMAL" in act[1]:
-                    mask[act[0]:act[0]+2] = [False] * 2
-                
-        internal_obs["past_market_actions"].add((action_idx, action_str))
+        # print("ACTION:", action)
+        # print("action_str:", action_str)
+        if type(action_str) == tuple and action_str[0] in ["BUY_SEED", "BUY_PRODUCT", "BUY_ANIMAL", "SELL"]:
+            used_actions = [act[1] for act in internal_obs["past_market_actions"]]
+            # print("USED ACTION: ", used_actions)
+            if (action_str[0], action_str[1]) not in internal_obs["past_market_actions"]:
+                # print("ACTION_STR[2]: ", action_str[2])
+                if "BUY_SEED" == action_str[0]:
+                    if global_vars.BUY_SEED_INTERVAL == 1: 
+                        offset = action_str[2]//global_vars.BUY_SEED_INTERVAL - 1
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_SEED//global_vars.BUY_SEED_INTERVAL)-offset] = [False] * (global_vars.MAX_NUM_BUY_SEED//global_vars.BUY_SEED_INTERVAL)
+                    else:
+                        offset = action_str[2]//global_vars.BUY_SEED_INTERVAL
+                        # print("first:", action[0]-offset)
+                        # print("second:", action[0]+(global_vars.MAX_NUM_BUY_SEED//global_vars.BUY_SEED_INTERVAL) + 1-offset)
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_SEED//global_vars.BUY_SEED_INTERVAL) + 1-offset] = [False] * (global_vars.MAX_NUM_BUY_SEED//global_vars.BUY_SEED_INTERVAL + 1)
+                        # print(mask)
+                elif "BUY_PRODUCT" == action_str[0]:
+                    if global_vars.BUY_PRODUCT_INTERVAL == 1: 
+                        offset = action_str[2]//global_vars.BUY_PRODUCT_INTERVAL - 1
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_PRODUCT//global_vars.BUY_PRODUCT_INTERVAL)-offset] = [False] * (global_vars.MAX_NUM_BUY_PRODUCT//global_vars.BUY_PRODUCT_INTERVAL)
+                    else:
+                        offset = action_str[2]//global_vars.BUY_PRODUCT_INTERVAL
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_PRODUCT//global_vars.BUY_PRODUCT_INTERVAL) + 1-offset] = [False] * (global_vars.MAX_NUM_BUY_PRODUCT//global_vars.BUY_PRODUCT_INTERVAL + 1)
+                elif "BUY_ANIMAL" == action_str[0]:
+                    if global_vars.BUY_ANIMAL_INTERVAL == 1: 
+                        offset = action_str[2]//global_vars.BUY_ANIMAL_INTERVAL - 1
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_ANIMAL//global_vars.BUY_ANIMAL_INTERVAL)-offset] = [False] * (global_vars.MAX_NUM_BUY_ANIMAL//global_vars.BUY_ANIMAL_INTERVAL)
+                    else:
+                        offset = action_str[2]//global_vars.BUY_ANIMAL_INTERVAL
+                        mask[action[0]-offset:action[0]+(global_vars.MAX_NUM_BUY_ANIMAL//global_vars.BUY_ANIMAL_INTERVAL) + 1-offset] = [False] * (global_vars.MAX_NUM_BUY_ANIMAL//global_vars.BUY_ANIMAL_INTERVAL + 1)
+                elif "SELL" == action_str[0]:
+                    if global_vars.SELL_INTERVAL == 1: 
+                        offset = action_str[2]//global_vars.SELL_INTERVAL  - 1
+                        mask[action[0]-offset:action[0]+global_vars.MAX_NUM_SELL//global_vars.MAX_NUM_SELL-offset] = [False] * (global_vars.MAX_NUM_SELL//global_vars.MAX_NUM_SELL)
+                    else:
+                        offset = action_str[2]//global_vars.SELL_INTERVAL
+                        mask[action[0]-offset:action[0]+global_vars.MAX_NUM_SELL//global_vars.MAX_NUM_SELL + 1-offset] = [False] * (global_vars.MAX_NUM_SELL//global_vars.MAX_NUM_SELL + 1)
+            # else: print("MASKED")
+            if type(action_str) == tuple:   
+                # print(((action_str)[0], (action_str)[1], (action_str)[2]))
+                # print(offset)
+                internal_obs["past_market_actions"].add(((action_str)[0], (action_str)[1]))
+                # print(internal_obs['past_market_actions'])
 
         return mask
         

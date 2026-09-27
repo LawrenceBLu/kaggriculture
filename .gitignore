@@ -1,2 +1,7 @@
-**./__pycache__/
+__pycache__/**
 *.pyc
+model_checkpoint.pt
+render.html
+replay.json
+results.txt
+test.py

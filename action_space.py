@@ -75,23 +75,23 @@ def market_action_space():
     list_all_actions = []
     ct = 0
     for i in range(5):
-        for a in range(0, global_vars.MAX_NUM_BUY_SEED, 2):
+        for a in range(0, global_vars.MAX_NUM_BUY_SEED, global_vars.BUY_SEED_INTERVAL):
             actions[tuple(("BUY_SEED", list_of_all_crops[i], a+1))] = ct
             ct += 1
     
     for i in range(1):
-        for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, 2):
+        for a in range(0, global_vars.MAX_NUM_BUY_PRODUCT, global_vars.BUY_PRODUCT_INTERVAL):
             actions[tuple(("BUY_PRODUCT", "WHEAT", a+1))] = ct
             actions[tuple(("BUY_PRODUCT", "FERTILIZER", a+1))] = ct
             ct += 1
             
     for i in range(3):
-        for a in range(0, global_vars.MAX_NUM_BUY_ANIMAL, 2):
+        for a in range(0, global_vars.MAX_NUM_BUY_ANIMAL, global_vars.BUY_ANIMAL_INTERVAL):
             actions[tuple(("BUY_ANIMAL", list_of_all_animals[i], a+1))] = ct
             ct += 1
             
     for i in range(len(list_of_all_sellable_resources)):
-        for a in range(0, global_vars.MAX_NUM_SELL, 5):
+        for a in range(0, global_vars.MAX_NUM_SELL, global_vars.SELL_INTERVAL):
             actions[tuple(("SELL", list_of_all_sellable_resources[i], a+1))] = ct
             ct += 1
     
