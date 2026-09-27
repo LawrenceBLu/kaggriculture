@@ -25,11 +25,12 @@ def run():
   num_hands = 5
   market_action_dim = len(market_action_space())
   num_orders = 10
-  batch_size = 360
+  chunk_len = 72
+  batch_size = 10
   lr = 1e-4
   clipping_eps = 0.2
   adam_eps = 1e-5
-  epochs = 5
+  epochs = 3
   value_c = 0.5
   entr_c = 0.01
   gae_lambda = 0.99
@@ -42,18 +43,17 @@ def run():
       for i in range(num_envs)
   ])
   
-  ppo = PPO(envs, num_envs, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, adam_eps, clipping_eps, epochs, batch_size, value_c, entr_c, gae_lambda, gamma, device)
+  ppo = PPO(envs, num_envs, grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, lr, adam_eps, clipping_eps, epochs, chunk_len, batch_size, value_c, entr_c, gae_lambda, gamma, device)
 
-  num_rollouts = 5
-  max_steps = (720 * num_rollouts) - 1
-  num_iterations = 1
+  num_rollouts = 1
+  max_steps = 720 * num_rollouts
+  num_iterations = 100
 
 
   for i in range(num_iterations):
     ppo.collect_rollout(max_steps)
     ppo.train()
     ppo.save_model()
-    ppo.store_results(i)
 
 if __name__ == "__main__":
   run()
