@@ -47,7 +47,6 @@ class ActorCritic(nn.Module):
         state = torch.cat([grid_state, non_tiles], dim=-1)
         x = self.pre_lstm(state)
 
-
         if torch.all(ep_starts == 0.0):
             lstm_out, hidden = self.lstm(x.unsqueeze(1), hidden)
             lstm_out = lstm_out.squeeze(1)
@@ -81,33 +80,34 @@ class ActorCritic(nn.Module):
         farm_masks = []
         market_masks = []
         log_probs = []
-        
         for farmer_index, farmer_logits in enumerate(farmer_vec):
             farm_masks.append(farm_mask)
-            farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask))
+            farm_dist = MaskedCategorical(logits=farmer_logits, mask=torch.tensor(farm_mask, device="cuda"))
             farm_action = farm_dist.sample()
             if farmer_index < (farmer_vec.shape[0] - 1):
                 farm_mask = list(map(lambda x: invalid_action(internal_obs, x, farmer_index), all_farm_actions.values()))
                 farm_action_str = all_farm_actions[int(farm_action.item())]
                 farm_mask = update_mask(farm_mask, internal_obs, farm_action_str, all_farm_actions, index=farmer_index, is_farm=True)
-
+            
             log_prob = farm_dist.log_prob(farm_action)
             farm_actions.append(farm_action)
             log_probs.append(log_prob)
-
+        persistent_market_mask = market_mask
+        
         for market_index, market_logits in enumerate(market_vec):
-            market_masks.append(market_mask)
-            market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(market_mask))
+            market_masks.append(persistent_market_mask)
+            market_dist = MaskedCategorical(logits=market_logits, mask=torch.tensor(persistent_market_mask, device="cuda"))
             market_action = market_dist.sample()
             if market_index < (market_vec.shape[0] - 1):
                 market_mask = list(map(lambda x: invalid_action(internal_obs, x), all_market_actions.values()))
                 market_action_str = all_market_actions[int(market_action.item())]
                 market_mask = update_mask(market_mask, internal_obs, (market_action, market_action_str), all_market_actions, index=market_index)
-
+                persistent_market_mask = [a and b for a, b in zip(market_mask, persistent_market_mask)]
+            
             log_prob = market_dist.log_prob(market_action)
             market_actions.append(market_action)
             log_probs.append(log_prob)
-
+        
         log_p = torch.stack(log_probs, dim=-1).sum(dim=-1)
         return farm_actions, market_actions, log_p, farm_masks, market_masks
 
