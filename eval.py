@@ -86,14 +86,6 @@ def process_obs(obs):
 
     return grid, non_tiles
 
-def create_masks(obs):
-    # First farm_mask is for farmer only
-
-    farm_mask = list(map(lambda x: invalid_action(obs, x), farmer_action_space.values()))
-    market_mask = list(map(lambda x: invalid_action(obs, x), market_action_space.values()))
-
-    return farm_mask, market_mask
-
 def create_masks():
     global internal_obs
     # First farm_mask is for farmer only

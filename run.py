@@ -39,7 +39,7 @@ def run():
 
   num_envs = 10
   envs = gym.vector.AsyncVectorEnv([
-      make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="random")
+      make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="starter")
       for i in range(num_envs)
   ])
   
@@ -47,7 +47,7 @@ def run():
 
   num_rollouts = 1
   max_steps = 720 * num_rollouts
-  num_iterations = 250
+  num_iterations = 300
 
 
   for i in range(num_iterations):
