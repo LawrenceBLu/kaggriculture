@@ -123,12 +123,12 @@ class KaggleEnvWrapper(gym.Env):
                         reward += 0.5
             for action in combined_farmer_farmhand_actions:
                 if action == "PASS": 
-                    reward -= 0.
+                    reward -= 0.01
 
             for t in tiles: 
                 if t is not None and t == "WEED":
                     # print("WEED ON BOARD")
-                    reward -= 0.05
+                    reward -= 0.5
             for y in range(10):
                 for x in range(10):
                     tile = obs['farms'][player_num]['tiles'][y][x]
@@ -165,6 +165,10 @@ class KaggleEnvWrapper(gym.Env):
                             #reward += 0.25
                             #if self.past_action == "HARVEST" and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 #reward += 0.5
+                        elif "plant" in past_tile.keys() and ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                            reward += 0.5
+                            if ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
+                                reward += 0.5
                                 
                         # CHECK IF THIS IS CORRECT
                         elif "plant" in past_tile.keys() and past_tile['consecutive_unwatered'] >= 1:
