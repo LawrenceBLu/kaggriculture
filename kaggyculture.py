@@ -164,11 +164,11 @@ def invalid_action(obs, action, farmhand_index=None):
     shed = obs['private']['shed']
 
     if farmhand_index is None:
-        y, x = obs['farms'][player_num]['farmer']
+        x, y = obs['farms'][player_num]['farmer']
         inventory = obs['private']['inventories'][0]
     else:
         if farmhand_index < len(obs['farms'][player_num]['hands']):
-            y, x = obs['farms'][player_num]['hands'][farmhand_index]
+            x, y = obs['farms'][player_num]['hands'][farmhand_index]
             inventory = obs['private']['inventories'][farmhand_index + 1]
         else:
             if action != "PASS":
@@ -184,9 +184,9 @@ def invalid_action(obs, action, farmhand_index=None):
     
     if type_action == "NORTH" and y == 0: return invalid
     if type_action == "SOUTH" and y == 9: return invalid
-    elif type_action == "SOUTH" and obs['farms'][player_num]['tiles'][min(y+1, 9)][x] == "LOCKED" and obs['farms'][player_num]['tiles'][min(y, 9)][x] == "LOCKED": return invalid
+    elif type_action == "SOUTH" and obs['farms'][player_num]['tiles'][min(y+1, 9)][x] == "LOCKED" and obs['farms'][player_num]['tiles'][y][x] == "LOCKED": return invalid
     if type_action == "EAST" and x == 9: return invalid
-    elif type_action == "EAST" and obs['farms'][player_num]['tiles'][y][min(x+1, 9)] == "LOCKED" and obs['farms'][player_num]['tiles'][min(x, 9)][x] == "LOCKED": return invalid
+    elif type_action == "EAST" and obs['farms'][player_num]['tiles'][y][min(x+1, 9)] == "LOCKED" and obs['farms'][player_num]['tiles'][y][x] == "LOCKED": return invalid
     if type_action == "WEST" and x == 0: return invalid
 
     if type_action not in ["NORTH", "SOUTH", "EAST", "WEST"] and tile == "LOCKED": return invalid
