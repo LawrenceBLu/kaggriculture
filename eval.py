@@ -32,6 +32,7 @@ gae_lambda = 0.99
 gamma = 0.95
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 model = ActorCritic(grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device).to(device)
 weights = torch.load("model_checkpoint.pt", weights_only=True)
 model.load_state_dict(weights)
@@ -42,6 +43,7 @@ farmer_action_space = farmhand_action_space()
 market_action_space = market_action_space()
 last_start = True
 lstm_hidden = (torch.zeros(lstm_layers, 1, lstm_dim, device=device), torch.zeros(lstm_layers, 1, lstm_dim, device=device))
+steps = 0
 
 
 def action_idx_to_string(farmer_action_idx, market_action_idx):
@@ -96,7 +98,7 @@ def create_masks():
     return farm_masks, market_masks
 
 def agent(obs):
-    global lstm_hidden, last_start, internal_obs
+    global lstm_hidden, last_start, internal_obs, steps
     
     grid, non_tiles = process_obs(obs)
     farm_mask, market_mask = create_masks()
@@ -109,6 +111,10 @@ def agent(obs):
     last_start = False
     actions = [action_idx_to_string(farm_actions, market_actions) for farm_actions, market_actions in zip(farm_actions, market_actions)]
     action = actions[0]
+    if steps % 24 == 0:
+      for _ in range(5):
+        action["market"].append(["HIRE"])
+    steps += 1
     return action
     
 
