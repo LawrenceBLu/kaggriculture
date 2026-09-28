@@ -24,7 +24,7 @@ def run():
   farm_action_dim = len(farmhand_action_space())
   num_hands = 5
   market_action_dim = len(market_action_space())
-  num_orders = 10
+  num_orders = 3
   chunk_len = 72
   batch_size = 10
   lr = 1e-4
@@ -37,7 +37,7 @@ def run():
   gamma = 0.95
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  num_envs = 10
+  num_envs = 8
   envs = gym.vector.AsyncVectorEnv([
       make_env("kaggriculture", grid_size, non_tile_len, opponent_agent="starter")
       for i in range(num_envs)
@@ -47,7 +47,7 @@ def run():
 
   num_rollouts = 1
   max_steps = 720 * num_rollouts
-  num_iterations = 300
+  num_iterations = 5
 
 
   for i in range(num_iterations):

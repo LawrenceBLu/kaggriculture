@@ -147,10 +147,10 @@ def setup_tile_obs(obs):
                         feature_vector[animal_vector_ind:animal_vector_ind+6] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
             zero_matrix_copy[y][x] = feature_vector
     farmer_position = obs['farms'][player_num]['farmer']
-    zero_matrix_copy[farmer_position[1], farmer_position[0]][len(feature_vector)-6] = 1
+    zero_matrix_copy[farmer_position[1]][farmer_position[0]][len(feature_vector)-6] = 1
     for i in range(len(obs['farms'][player_num]['hands'])):
         farmhand_position = obs['farms'][player_num]['hands'][i]
-        zero_matrix_copy[farmhand_position[1], farmhand_position[0]][len(feature_vector)-6+i+1] = 1
+        zero_matrix_copy[farmhand_position[1]][farmhand_position[0]][len(feature_vector)-6+i+1] = 1
     return zero_matrix_copy
 
 # action mask
@@ -241,9 +241,9 @@ def invalid_action(obs, action, farmhand_index=None):
     if type_action == "HARVEST":
         if not isinstance(tile, dict): return invalid
         if tile.get('kind') == "PLANT":
-            if obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('crop'))]: return invalid
+            if (obs['day'] - tile.get('planted_day', 0)) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('crop'))]: return invalid
         elif tile.get('kind') in ["COOP", "PASTURE"]:
-            if tile.get("animal", None) is not None and obs['day'] - tile.get('planted_day', 0) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('animal', None))]: return invalid            
+            if tile.get("animal", None) is not None and (obs['day'] - tile.get('planted_day', 0)) < list_of_first_yield_combined[list_of_all_harvestable.index(tile.get('animal', None))]: return invalid            
         # if tile.get("kind") == "PLANT":
         #     if tile.get("yield_units") <= 0: return invalid
         # elif tile.get("kind") in ["COOP", "PASTURE"]:

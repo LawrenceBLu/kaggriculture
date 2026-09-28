@@ -82,12 +82,13 @@ class KaggleEnvWrapper(gym.Env):
             
         else:
             # rewards for first farms unlock
-            if self.past_obs['farms'][player_num]['tiles'][0][9] == 'LOCKED' and obs['farms'][player_num]['tiles'][0][9] == None:
+            reward += max(0, (obs["farms"][player_num]["money"] - self.past_obs["farms"][player_num]["money"])/100)
+            if self.past_obs["day"] > 7 and self.past_obs['farms'][player_num]['tiles'][0][9] == 'LOCKED' and obs['farms'][player_num]['tiles'][0][9] == None:
                 # print("FIRST QUADRANT HAS BEEN UNLOCKED")
-                reward += 3
+                reward += 0.5
             # rewards for second farms unlock
-            if self.past_obs['farms'][player_num]['tiles'][9][0] == 'LOCKED' and obs['farms'][player_num]['tiles'][9][0] == None:
-                reward += 3
+            if self.past_obs["day"] > 15 and self.past_obs['farms'][player_num]['tiles'][9][0] == 'LOCKED' and obs['farms'][player_num]['tiles'][9][0] == None:
+                reward += 0.5
                 # print("SECOND QUADRANT HAS BEEN UNLOCKED")
             # # penalizes for third farms unlock
             # if self.past_obs['farms'][player_num]['tiles'][9][9] == 'LOCKED' and obs['farms'][player_num]['tiles'][9][9] == None:
@@ -98,10 +99,7 @@ class KaggleEnvWrapper(gym.Env):
                         if self.past_obs['market']['inventory'][action[1]] < 10000:
                             reward += (10000-self.past_obs['market']['inventory'][action[1]] / MARKET_PARAMS[action[1]]["T"])* 0.02 * action[2] 
                 # rewards for buying low
-            """                     if action[0] == "BUY":
-                                    if self.past_obs['market']['inventory'][self.past_action[1]] > 10000:
-                                        reward += (self.past_obs['market']['inventory'][action[1]]-10000 / MARKET_PARAMS[self.past_action[1]]["T"])* 0.02 * self.past_action[2] 
-                """                    # rewards for selling high
+            # rewards for selling high
             tiles = [tile for column in obs['farms'][player_num]['tiles'] for tile in column]
             # penalizes for weed on a tile, disincentivizes underwatering
             
@@ -122,11 +120,11 @@ class KaggleEnvWrapper(gym.Env):
             combined_ffa_w_pos = []
             for i in range(len(combined_farmer_farmhand_actions)):
                 combined_ffa_w_pos.append([combined_farmer_farmhand_actions[i], pos_farmer_farmhand[i]])
-            if obs['step'] % 24 == 0:
-                for action in combined_farmer_farmhand_actions:
-                    if action == "HIRE": 
-                        # print("HIRE HAS BEEN MADE")
-                        reward += 0.5
+            # if obs['step'] % 24 == 0:
+            #     for action in combined_farmer_farmhand_actions:
+            #         if action == "HIRE": 
+            #             # print("HIRE HAS BEEN MADE")
+            #             reward += 0.5
             for action in combined_farmer_farmhand_actions:
                 if action == "PASS": 
                     reward -= 0.01
@@ -144,13 +142,13 @@ class KaggleEnvWrapper(gym.Env):
                         if past_tile == None and np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
                         # NEED TO ADD POSITION OF ALL COMBINED FARMER HAND AND LINK WHICH ONES TO WHICH
                             # print("COOP/PASTURE HAS BEEN PLACED")
-                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
                     if isinstance(past_tile, dict):
                         if past_tile.get("animal") is not None and past_tile.get("kind") in ("COOP", "PASTURE"):
                             if [["PLACE", "COW"], [y, x]] in combined_ffa_w_pos or [["PLACE", "GOOSE"], [y, x]] in combined_ffa_w_pos or [["PLACE", "SHEEP"], [y,x]] in combined_ffa_w_pos:
                                 if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
                                     # print("ANIMAL HAS BEEN PLACED IN COOP")
-                                    reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 3
+                                    reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 2
                     elif past_tile is None and ["PLANT", [y,x]] in combined_ffa_w_pos:
                         if np.linalg.norm(np.array([y, x]) - (4,4)) > 3:
                             # print("PLANT HAS BEEN PLANTED OUTSIDE OF RADIUS 3")
@@ -162,7 +160,7 @@ class KaggleEnvWrapper(gym.Env):
                     if type(past_tile) == dict:
                         if "plant" in past_tile.keys() and past_tile['watered_today'] == False and ["WATER", [y,x]] in combined_ffa_w_pos:
                             # print("PLANT HAS BEEN WATERED")
-                            reward += 0.5
+                            reward += 0.75
                         elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and ["FERTILIZE", [y,x]] in combined_ffa_w_pos:
                             reward += 0.2
                         #elif "plant" in past_tile.keys():
@@ -174,11 +172,11 @@ class KaggleEnvWrapper(gym.Env):
                         elif "plant" in past_tile.keys() and ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
                             reward += 0.5
                             if ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
-                                reward += 0.5
+                                reward += 1
                                 
                         # CHECK IF THIS IS CORRECT
-                        elif "plant" in past_tile.keys() and past_tile['consecutive_unwatered'] >= 1:
-                            reward -= 0.5
+                        # elif "plant" in past_tile.keys() and past_tile['consecutive_unwatered'] >= 1:
+                        #     reward -= 0.5
                             
                         elif "animal" in past_tile.keys() and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] > 0.5:
                             reward += 0.25
