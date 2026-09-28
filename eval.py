@@ -9,7 +9,7 @@ from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_
 from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
-grid_size = 25
+grid_size = 31
 cnn_dim = 256
 non_tile_len = 97
 non_tile_dim = 64
