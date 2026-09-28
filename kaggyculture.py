@@ -110,7 +110,7 @@ def setup_tile_obs(obs):
     for y in range(10):
         for x in range(10):
             tile = obs['farms'][player_num]['tiles'][y][x]
-            feature_vector = np.zeros(25)
+            feature_vector = np.zeros(31)
             if type(tile) == str or tile is None:
                 if tile == None:
                     feature_vector[0] = 1
@@ -146,6 +146,11 @@ def setup_tile_obs(obs):
                         animal_vector_ind = len(list_of_all_crops)+11+len(list_of_all_animals)
                         feature_vector[animal_vector_ind:animal_vector_ind+6] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
             zero_matrix_copy[y][x] = feature_vector
+    farmer_position = obs['farms'][player_num]['farmer']
+    zero_matrix_copy[farmer_position[1], farmer_position[0]][len(feature_vector)-6] = 1
+    for i in range(len(obs['farms'][player_num]['hands'])):
+        farmhand_position = obs['farms'][player_num]['hands'][i]
+        zero_matrix_copy[farmhand_position[1], farmhand_position[0]][len(feature_vector)-6+i+1] = 1
     return zero_matrix_copy
 
 # action mask
@@ -293,7 +298,7 @@ def invalid_action(obs, action, farmhand_index=None):
         # if num <= 0: return invalid
 
         ### list_of_original_market_prices_crops_sell[action[2]]
-        if money + global_vars.MIN_MONEY < obs['market']['prices'][item] * num: return invalid
+        if money - (list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * num) < global_vars.MIN_MONEY: return invalid
         # if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
 
 
@@ -302,14 +307,14 @@ def invalid_action(obs, action, farmhand_index=None):
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
         # if item not in ["WHEAT", "FERTILIZER"]: return invalid
-        if money + global_vars.MIN_MONEY < obs['market']['prices'][item] * num: return invalid
+        if money - (obs['market']['prices'][item] * num) < global_vars.MIN_MONEY: return invalid
 
     if type_action == "BUY_ANIMAL":
         # should not have to exist
         # if len(action) < 3: return invalid
         # if num <= 0: return invalid
         # if item not in list_of_all_animals: return invalid
-        if money + global_vars.MIN_MONEY < list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num: return invalid
+        if money - (list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num) < global_vars.MIN_MONEY: return invalid
 
     if type_action == "SELL":
         # should not have to exist

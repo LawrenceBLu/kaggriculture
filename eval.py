@@ -9,7 +9,7 @@ from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_
 from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
-grid_size = 25
+grid_size = 31
 cnn_dim = 256
 non_tile_len = 97
 non_tile_dim = 64
@@ -19,7 +19,7 @@ lstm_layers = 1
 farm_action_dim = len(farmhand_action_space())
 num_hands = 5
 market_action_dim = len(market_action_space())
-num_orders = 10
+num_orders = 3
 chunk_len = 72
 batch_size = 10
 lr = 1e-4

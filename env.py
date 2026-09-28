@@ -19,7 +19,7 @@ class KaggleEnvWrapper(gym.Env):
         self.action_space = spaces.Dict({
             "farmer": spaces.Discrete(1),
             "hands": spaces.Discrete(5),
-            "market": spaces.Discrete(10)
+            "market": spaces.Discrete(3)
         })
 
         self.past_obs = None
@@ -27,6 +27,7 @@ class KaggleEnvWrapper(gym.Env):
         self.done = False
         self.dict_of_lists = load_dict_of_lists()
         self.max_money = 0
+        self.curr_step = 0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -34,6 +35,7 @@ class KaggleEnvWrapper(gym.Env):
         self.past_obs = obs
         state = self._extract_obs(obs)
         self.done = False
+        self.curr_step = 0
         return state, {"raw_obs": obs}
 
     def step(self, action):
@@ -45,7 +47,11 @@ class KaggleEnvWrapper(gym.Env):
             state = self._extract_obs(obs)
             self.past_market_action = None
             return state, 0, False, False, info
+        if self.curr_step % 24 == 0:
+            for _ in range(5):
+                action["market"].append(["HIRE"])
         obs, _, self.done, _ = self.trainer.step(action)
+        self.curr_step += 1
         state = self._extract_obs(obs)
         reward = self.get_reward(obs)
         self.past_obs = obs
@@ -123,12 +129,12 @@ class KaggleEnvWrapper(gym.Env):
                         reward += 0.5
             for action in combined_farmer_farmhand_actions:
                 if action == "PASS": 
-                    reward -= 0.
+                    reward -= 0.01
 
             for t in tiles: 
                 if t is not None and t == "WEED":
                     # print("WEED ON BOARD")
-                    reward -= 0.05
+                    reward -= 0.5
             for y in range(10):
                 for x in range(10):
                     tile = obs['farms'][player_num]['tiles'][y][x]
@@ -165,6 +171,10 @@ class KaggleEnvWrapper(gym.Env):
                             #reward += 0.25
                             #if self.past_action == "HARVEST" and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 #reward += 0.5
+                        elif "plant" in past_tile.keys() and ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                            reward += 0.5
+                            if ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
+                                reward += 0.5
                                 
                         # CHECK IF THIS IS CORRECT
                         elif "plant" in past_tile.keys() and past_tile['consecutive_unwatered'] >= 1:

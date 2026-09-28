@@ -14,7 +14,7 @@ def make_env(env_name, num_channels, non_tile_len, opponent_agent="random"):
     return _init
 
 def run():
-  grid_size = 25
+  grid_size = 31
   cnn_dim = 256
   non_tile_len = 97
   non_tile_dim = 64
