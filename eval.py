@@ -9,37 +9,38 @@ from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_
 from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
-grid_size = 26
+grid_size = 25
 cnn_dim = 256
 non_tile_len = 97
 non_tile_dim = 64
 linear_dim = 256
 lstm_dim = 256
 lstm_layers = 1
-farm_action_dim = 113
+farm_action_dim = len(farmhand_action_space())
 num_hands = 5
-market_action_dim = 41
+market_action_dim = len(market_action_space())
 num_orders = 10
-batch_size = 360
+chunk_len = 72
+batch_size = 10
 lr = 1e-4
 clipping_eps = 0.2
 adam_eps = 1e-5
-epochs = 5
+epochs = 3
 value_c = 0.5
 entr_c = 0.01
 gae_lambda = 0.99
 gamma = 0.95
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = ActorCritic(grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders)
+model = ActorCritic(grid_size, cnn_dim, non_tile_len, non_tile_dim, linear_dim, lstm_dim, lstm_layers, farm_action_dim, num_hands, market_action_dim, num_orders, device).to(device)
 weights = torch.load("model_checkpoint.pt", weights_only=True)
 model.load_state_dict(weights)
 model.eval()
 
-internal_obs = {}
+internal_obs = None
 farmer_action_space = farmhand_action_space()
 market_action_space = market_action_space()
 last_start = True
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 lstm_hidden = (torch.zeros(lstm_layers, 1, lstm_dim, device=device), torch.zeros(lstm_layers, 1, lstm_dim, device=device))
 
 
@@ -56,7 +57,7 @@ def action_idx_to_string(farmer_action_idx, market_action_idx):
       for farmhand_action in farmer_action_idx[1:]:
         hand_action = farmer_action_space[int(farmhand_action)]
         if type(hand_action) == str:
-          farmhand_actions.append(hand_action)
+          farmhand_actions.append([hand_action])
         else:
           farmhand_actions.append(list(hand_action))
       
@@ -80,8 +81,8 @@ def process_obs(obs):
     global internal_obs
     grid = setup_tile_obs(obs)
     non_tiles = setup_non_tile_observation(obs)
-    internal_obs = deepcopy(obs)
-    update_internal_obs(internal_obs)
+    internal_obs = [deepcopy(obs)]
+    [update_internal_obs(internal_ob) for internal_ob in internal_obs]
 
     return grid, non_tiles
 
@@ -93,20 +94,29 @@ def create_masks(obs):
 
     return farm_mask, market_mask
 
+def create_masks():
+    global internal_obs
+    # First farm_mask is for farmer only
+  
+    farm_masks = [list(map(lambda x: invalid_action(internal_ob, x), farmer_action_space.values())) for internal_ob in internal_obs]
+    market_masks = [list(map(lambda x: invalid_action(internal_ob, x), market_action_space.values())) for internal_ob in internal_obs]
+
+    return farm_masks, market_masks
+
 def agent(obs):
     global lstm_hidden, last_start, internal_obs
     
     grid, non_tiles = process_obs(obs)
-    farm_mask, market_mask = create_masks(obs)
-    grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=device).permute(2, 0, 1)
+    farm_mask, market_mask = create_masks()
+    grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=device).permute(2, 0, 1).unsqueeze(0)
     non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=device).unsqueeze(0)
-    ep_starts = torch.tensor(last_start, dtype=torch.float32, device=device)
+    ep_starts = torch.tensor(last_start, dtype=torch.float32, device=device).unsqueeze(0)
 
     farm_actions, market_actions, _, _, _, _, lstm_hidden = model(grid, non_tiles, lstm_hidden, ep_starts, farm_mask, market_mask, internal_obs)
 
     last_start = False
-    action = action_idx_to_string(farm_actions, market_actions)
-
+    actions = [action_idx_to_string(farm_actions, market_actions) for farm_actions, market_actions in zip(farm_actions, market_actions)]
+    action = actions[0]
     return action
     
 

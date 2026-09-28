@@ -236,7 +236,7 @@ class PPO():
       for farmhand_action in farmer_action_idx[1:]:
         hand_action = self.farmer_action_space[int(farmhand_action)]
         if type(hand_action) == str:
-          farmhand_actions.append(hand_action)
+          farmhand_actions.append([hand_action])
         else:
           farmhand_actions.append(list(hand_action))
       
