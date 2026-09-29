@@ -47,7 +47,7 @@ def run():
 
   num_rollouts = 1
   max_steps = 720 * num_rollouts
-  num_iterations = 5
+  num_iterations = 10
 
 
   for i in range(num_iterations):

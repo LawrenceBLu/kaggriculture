@@ -76,9 +76,10 @@ class KaggleEnvWrapper(gym.Env):
         if self.done == True:
             # rewards for win
             if obs['farms'][player_num]['money'] > obs['farms'][player_num^1]['money']:
-                reward += 5
+                reward += 5 * (obs['farms'][player_num]['money']/3000)
             # rewards for total money/25k
-            reward += self.max_money/10000
+            if self.max_money > 3000:
+                reward += self.max_money/3000
             
         else:
             # rewards for first farms unlock
@@ -105,10 +106,9 @@ class KaggleEnvWrapper(gym.Env):
             
             # if
             farmer_actions = self.past_action['farmer']
-
             farmhand_actions = self.past_action['hands']
-            if len(farmer_actions) == 1: combined_farmer_farmhand_actions = farmer_actions + (farmhand_actions)
-            else: combined_farmer_farmhand_actions = [farmer_actions] + (farmhand_actions)
+
+            combined_farmer_farmhand_actions = [farmer_actions] + farmhand_actions
             pos_farmer_farmhand = []
             pos_farmer_farmhand.append(self.past_obs['farms'][player_num]['farmer'])
             
@@ -117,79 +117,80 @@ class KaggleEnvWrapper(gym.Env):
                     pos_farmer_farmhand.append(self.past_obs['farms'][player_num]['hands'][i])
                 else:
                     pos_farmer_farmhand.append(None)
+
             combined_ffa_w_pos = []
             for i in range(len(combined_farmer_farmhand_actions)):
-                combined_ffa_w_pos.append([combined_farmer_farmhand_actions[i], pos_farmer_farmhand[i]])
+                combined_ffa_w_pos.append((combined_farmer_farmhand_actions[i], pos_farmer_farmhand[i]))
             # if obs['step'] % 24 == 0:
             #     for action in combined_farmer_farmhand_actions:
             #         if action == "HIRE": 
             #             # print("HIRE HAS BEEN MADE")
             #             reward += 0.5
-            for action in combined_farmer_farmhand_actions:
-                if action == "PASS": 
-                    reward -= 0.01
+            # for action in combined_farmer_farmhand_actions:
+            #     if action == ["PASS"]: 
+            #         reward -= 0.01
 
             for t in tiles: 
-                if t is not None and t == "WEED":
+                if isinstance(t, dict) and t["kind"] == "WEED":
                     # print("WEED ON BOARD")
                     reward -= 0.5
             for y in range(10):
                 for x in range(10):
                     tile = obs['farms'][player_num]['tiles'][y][x]
                     past_tile = self.past_obs['farms'][player_num]['tiles'][y][x]
-                    if ["BUILD_PASTURE", [y, x]] in combined_ffa_w_pos or ["BUILD_COOP", [y, x]] in combined_ffa_w_pos:
+                    if (["BUILD_PASTURE"], [x, y]) in combined_ffa_w_pos or (["BUILD_COOP"], [x, y]) in combined_ffa_w_pos:
                         # print("placed?")
-                        if past_tile == None and np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
+                        if past_tile == None and np.linalg.norm(np.array([x, y]) - (4,4)) < 3:
                         # NEED TO ADD POSITION OF ALL COMBINED FARMER HAND AND LINK WHICH ONES TO WHICH
                             # print("COOP/PASTURE HAS BEEN PLACED")
-                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
                     if isinstance(past_tile, dict):
                         if past_tile.get("animal") is not None and past_tile.get("kind") in ("COOP", "PASTURE"):
-                            if [["PLACE", "COW"], [y, x]] in combined_ffa_w_pos or [["PLACE", "GOOSE"], [y, x]] in combined_ffa_w_pos or [["PLACE", "SHEEP"], [y,x]] in combined_ffa_w_pos:
-                                if np.linalg.norm(np.array([y, x]) - (4,4)) <= 3:
+                            if (["PLACE", "COW"], [x, y]) in combined_ffa_w_pos or (["PLACE", "GOOSE"], [x, y]) in combined_ffa_w_pos or [["PLACE", "SHEEP"], [y,x]] in combined_ffa_w_pos:
+                                if np.linalg.norm(np.array([x, y]) - (4,4)) < 3:
                                     # print("ANIMAL HAS BEEN PLACED IN COOP")
-                                    reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4))))) * 2
-                    elif past_tile is None and ["PLANT", [y,x]] in combined_ffa_w_pos:
-                        if np.linalg.norm(np.array([y, x]) - (4,4)) > 3:
+                                    reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4))))) * 2
+                    elif past_tile is None and (["PLANT"], [x,y]) in combined_ffa_w_pos:
+                        if np.linalg.norm(np.array([x, y]) - (4,4)) >= 3:
                             # print("PLANT HAS BEEN PLANTED OUTSIDE OF RADIUS 3")
-                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([y, x]) - (4,4)))))
+                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
 
-                    elif type(past_tile) == str and past_tile == "WEED" and ["DIG", [y,x]] in combined_ffa_w_pos:
-                        # print("WEED HAS BEEN DUG")
-                        reward += 0.5
                     if type(past_tile) == dict:
-                        if "plant" in past_tile.keys() and past_tile['watered_today'] == False and ["WATER", [y,x]] in combined_ffa_w_pos:
+                        if past_tile["kind"] == "WEED" and (["DIG"], [x,y]) in combined_ffa_w_pos:
+                            # print("WEED HAS BEEN DUG")
+                            reward += 0.5
+                        elif past_tile["kind"] == "PLANT" and past_tile['watered_today'] == False and (["WATER"], [x,y]) in combined_ffa_w_pos:
                             # print("PLANT HAS BEEN WATERED")
-                            reward += 0.75
-                        elif "plant" in past_tile.keys() and (past_tile['fertilized_until_day'] - obs['day']) == 0 and ["FERTILIZE", [y,x]] in combined_ffa_w_pos:
+                            reward += 1
+                        elif "PLANT" == past_tile["kind"] and (past_tile['fertilized_until_day'] - obs['day']) == 0 and (["FERTILIZE"], [x,y]) in combined_ffa_w_pos:
                             reward += 0.2
-                        #elif "plant" in past_tile.keys():
+                        #elif "PLANT" == past_tile["kind"]:
                             #and self.past_action == "HARVEST": reward += 11111111
-                        #elif "plant" in past_tile.keys() and self.past_action == "HARVEST" and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                        #elif "PLANT" == past_tile["kind"] and self.past_action == "HARVEST" and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
                             #reward += 0.25
                             #if self.past_action == "HARVEST" and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 #reward += 0.5
-                        elif "plant" in past_tile.keys() and ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
+                        elif "PLANT" == past_tile["kind"] and (["HARVEST"], [x,y]) in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] > 0.5:
                             reward += 0.5
-                            if ["HARVEST", [y,x]] in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
+                            if past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 reward += 1
                                 
                         # CHECK IF THIS IS CORRECT
-                        # elif "plant" in past_tile.keys() and past_tile['consecutive_unwatered'] >= 1:
+                        # elif "PLANT" == past_tile["kind"] and past_tile['consecutive_unwatered'] >= 1:
                         #     reward -= 0.5
                             
-                        elif "animal" in past_tile.keys() and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] > 0.5:
+                        elif "animal" in past_tile.keys() and (["HARVEST"], [x,y])  in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] > 0.5:
                             reward += 0.25
                             if past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] == 1:
                                 reward += 0.5
                         
-                        elif "animal" in past_tile.keys() and past_tile['fed_today'] == False and ["FEED", [y,x]] in combined_ffa_w_pos:
+                        elif "animal" in past_tile.keys() and past_tile['fed_today'] == False and (["FEED"], [x,y]) in combined_ffa_w_pos:
                             # print("ANIMAL HAS BEEN FED")
-                            reward += 0.35
-                        elif "animal" in past_tile.keys() and past_tile['cared_today'] == False and ["CARE", [y,x]] in combined_ffa_w_pos:
+                            reward += 1
+                        elif "animal" in past_tile.keys() and past_tile['cared_today'] == False and (["CARE"], [x,y]) in combined_ffa_w_pos:
                             # print("ANIMAL HAS BEEN CARED FOR")
-                            reward += 0.35
-                        elif "animal" in past_tile.keys() and past_tile['consecutive_unfed'] >= 1:
-                            reward -= 0.5
+                            reward += 0.5
+                        # elif "animal" == past_tile["kind"] and past_tile['consecutive_unfed'] >= 1:
+                        #     reward -= 0.25
                         
         return reward

@@ -116,9 +116,9 @@ def setup_tile_obs(obs):
                     feature_vector[0] = 1
                 elif tile == 'LOCKED':
                     feature_vector[1] = 1
-                elif tile == "WEED":
-                    feature_vector[2] = 1
             else:
+                if tile['kind'] == "WEED":
+                    feature_vector[2] = 1
                 if tile['kind'] == "PLANT":
                     feature_vector[3+list_of_all_crops.index(tile['crop'])] = 1
                     steps_since_planted_norm = (obs['step'] - (tile['planted_day']*24))/list_of_max_yield_steps_crops[list_of_all_crops.index(tile['crop'])]
@@ -181,7 +181,7 @@ def invalid_action(obs, action, farmhand_index=None):
 
     tile = obs['farms'][player_num]['tiles'][y][x]
     shed_adjacent = (x, y) in [(4, 4), (5, 4), (4, 5), (5, 5)]
-    if type(action) is tuple and len(action) >= 2:
+    if type(action) in [tuple, list] and len(action) >= 2:
         item = action[1]
         num = 1
         if len(action) == 3:
@@ -328,13 +328,13 @@ def invalid_action(obs, action, farmhand_index=None):
             inven += obs['private']['inventories'][i+1].get(item, 0)
         if shed.get(item, 0) + inven == 0: return invalid
 
-    if type_action == "HIRE":
-        hire_cost = _fib(obs['farms'][player_num]['hires_today'])
-        if money < hire_cost: return invalid
+    # if type_action == "HIRE":
+    #     hire_cost = _fib(obs['farms'][player_num]['hires_today'])
+    #     if money < hire_cost: return invalid
         
-        # redundant but which one is right, why do u need both?
-        if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
-        if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
+    #     # redundant but which one is right, why do u need both?
+    #     if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
+    #     if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])

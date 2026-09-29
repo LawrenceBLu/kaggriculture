@@ -120,6 +120,6 @@ def agent(obs):
 
 if __name__ == "__main__":
     env = make("kaggriculture", configuration={"episodeSteps": 720}, debug=True)
-    env.run([agent, "random"])
+    env.run([agent, "starter"])
     with open("replay.json", "w") as f:
         json.dump(env.toJSON(), f)
