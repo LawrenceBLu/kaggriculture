@@ -210,7 +210,7 @@ def invalid_action(obs, action, farmhand_index=None):
     if type_action == "PICKUP":
         # if len(action) < 2: return invalid
         if obs['private']['shed'].get(item, 0) == 0: return invalid
-        if isinstance(tile, dict) and tile.get("kind") in ["COOP", "PASTURE"]: return invalid
+        # if isinstance(tile, dict) and tile.get("kind") in ["COOP", "PASTURE"]: return invalid
         if not shed_adjacent: return invalid
         # if num <= 0: return invalid
 
@@ -381,9 +381,10 @@ def update_mask(mask, internal_obs, action, action_space, index = None, is_farm=
     if is_farm == True:
         # Update mask if on same tile as previous
         if index > 0:
+            start_ind = 4 + (len(global_vars.list_of_all_pickupable_resources) * global_vars.MAX_ITEMS_PICKUP)
             past_pos = set(internal_obs["all_pos"][:index])
             if index < len(internal_obs["all_pos"]) and internal_obs["all_pos"][index] in past_pos:
-                mask[4:-1] = [False] * len(mask[4:-1])
+                mask[start_ind:-1] = [False] * len(mask[start_ind:-1])
                 return mask
 
         # Update internal_obs player inventory if farmer plants seeds
