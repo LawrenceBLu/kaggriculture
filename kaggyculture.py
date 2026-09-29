@@ -38,7 +38,7 @@ def _fib(n):
 
 # GLOBAL VARS
 MAX_INVEN_CAP = 25
-MAX_FARMHANDS = 5
+MAX_FARMHANDS = 10
 MAX_HIRE_PRICE = _fib(MAX_FARMHANDS)
 
 
@@ -121,7 +121,7 @@ def setup_tile_obs(obs):
     for y in range(10):
         for x in range(10):
             tile = obs['farms'][player_num]['tiles'][y][x]
-            feature_vector = np.zeros(32)
+            feature_vector = np.zeros(37)
             if type(tile) == str or tile is None:
                 if tile == None:
                     feature_vector[0] = 1
@@ -158,10 +158,10 @@ def setup_tile_obs(obs):
                         feature_vector[animal_vector_ind:animal_vector_ind+7] = [steps_since_placed_norm, yield_units_animal, fed_today, consecutive_unfed, cared_today, fertilizer_available, pending_care_bonus]
             zero_matrix_copy[y][x] = feature_vector
     farmer_position = obs['farms'][player_num]['farmer']
-    zero_matrix_copy[farmer_position[1]][farmer_position[0]][len(feature_vector)-6] = 1
+    zero_matrix_copy[farmer_position[1]][farmer_position[0]][len(feature_vector)-(MAX_FARMHANDS+1)] = 1
     for i in range(len(obs['farms'][player_num]['hands'])):
         farmhand_position = obs['farms'][player_num]['hands'][i]
-        zero_matrix_copy[farmhand_position[1]][farmhand_position[0]][len(feature_vector)-6+i+1] = 1
+        zero_matrix_copy[farmhand_position[1]][farmhand_position[0]][len(feature_vector)-(MAX_FARMHANDS+1)+i+1] = 1
     return zero_matrix_copy
 
 # action mask
@@ -267,13 +267,13 @@ def invalid_action(obs, action, farmhand_index=None):
         if inventory.get("FERTILIZER", 0) == 0: return invalid
 
     if type_action == "BUILD_COOP":
-        if y == 0 or y == 1 or y == 8 or y == 9: return invalid
-        if x == 0 or x == 1 or x == 8 or x == 9: return invalid
+        # if y == 0 or y == 1 or y == 8 or y == 9: return invalid
+        # if x == 0 or x == 1 or x == 8 or x == 9: return invalid
         if tile is not None: return invalid
 
     if type_action == "BUILD_PASTURE":
-        if y == 0 or y == 1 or y == 8 or y == 9: return invalid
-        if x == 0 or x == 1 or x == 8 or x == 9: return invalid
+        # if y == 0 or y == 1 or y == 8 or y == 9: return invalid
+        # if x == 0 or x == 1 or x == 8 or x == 9: return invalid
         if tile is not None: return invalid
 
     if type_action == "FEED":
@@ -343,18 +343,19 @@ def invalid_action(obs, action, farmhand_index=None):
             inven += obs['private']['inventories'][i+1].get(item, 0)
         if shed.get(item, 0) + inven == 0: return invalid
 
-    # if type_action == "HIRE":
-    #     hire_cost = _fib(obs['farms'][player_num]['hires_today'])
-    #     if money < hire_cost: return invalid
+    if type_action == "HIRE":
+        hire_cost = _fib(obs['farms'][player_num]['hires_today'])
+        if money < hire_cost: return invalid
         
-    #     # redundant but which one is right, why do u need both?
-    #     if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
-    #     if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
+        # redundant but which one is right, why do u need both?
+        # if len(obs["farms"][player_num]["hands"]) >= MAX_FARMHANDS: return invalid
+        if obs.get("num_hands", 0) >= MAX_FARMHANDS: return invalid
+        if obs["day"] < 15 and obs.get("num_hands", 0) >= 5: return invalid
 
     if type_action == "BUY_LAND":
         num_unlocked = len(obs['farms'][player_num]['unlocked_quadrants'])
         if num_unlocked == 1 and obs['day'] < 7: return invalid
-        if num_unlocked == 2 and obs['day'] < 15: return invalid
+        if num_unlocked == 2 and obs['day'] < 10: return invalid
         land_cost = [1000, 2000, 4000][num_unlocked-1]
         if money < land_cost: return invalid
 

@@ -9,17 +9,17 @@ from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_
 from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
-grid_size = 32
+grid_size = 37
 cnn_dim = 256
-non_tile_len = 105
-non_tile_dim = 64
-linear_dim = 256
+non_tile_len = 150
+non_tile_dim = 128
+linear_dim = 512
 lstm_dim = 256
 lstm_layers = 2
 farm_action_dim = len(farmhand_action_space())
-num_hands = 5
+num_hands = 10
 market_action_dim = len(market_action_space())
-num_orders = 3
+num_orders = 10
 chunk_len = 72
 batch_size = 10
 lr = 1e-4
@@ -28,7 +28,7 @@ adam_eps = 1e-5
 epochs = 3
 value_c = 0.5
 entr_c = 0.01
-gae_lambda = 0.99
+gae_lambda = 0.95
 gamma = 0.999
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -111,9 +111,9 @@ def agent(obs):
     last_start = False
     actions = [action_idx_to_string(farm_actions, market_actions) for farm_actions, market_actions in zip(farm_actions, market_actions)]
     action = actions[0]
-    if steps % 24 == 0:
-      for _ in range(5):
-        action["market"].append(["HIRE"])
+    # if steps % 24 == 0:
+    #   for _ in range(5):
+    #     action["market"].append(["HIRE"])
     steps += 1
     return action
     

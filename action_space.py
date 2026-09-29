@@ -96,8 +96,8 @@ def market_action_space():
             actions[tuple(("SELL", list_of_all_sellable_resources[i], a+1))] = ct
             ct += 1
     
-    # actions['HIRE'] = ct 
-    # ct += 1
+    actions['HIRE'] = ct 
+    ct += 1
     actions['BUY_LAND'] = ct
     ct += 1
     actions["PASS"] = ct

@@ -47,9 +47,9 @@ class KaggleEnvWrapper(gym.Env):
             state = self._extract_obs(obs)
             self.past_market_action = None
             return state, 0, False, False, info
-        if self.curr_step % 24 == 0:
-            for _ in range(5):
-                action["market"].append(["HIRE"])
+        # if self.curr_step % 24 == 0:
+        #     for _ in range(5):
+        #         action["market"].append(["HIRE"])
         obs, _, self.done, _ = self.trainer.step(action)
         self.curr_step += 1
         state = self._extract_obs(obs)
@@ -88,9 +88,10 @@ class KaggleEnvWrapper(gym.Env):
                 # print("FIRST QUADRANT HAS BEEN UNLOCKED")
                 reward += 0.5
             # rewards for second farms unlock
-            if obs["day"] >= 15 and self.past_obs['farms'][player_num]['tiles'][9][0] == 'LOCKED' and obs['farms'][player_num]['tiles'][9][0] == None:
+            if obs["day"] >= 10 and self.past_obs['farms'][player_num]['tiles'][9][0] == 'LOCKED' and obs['farms'][player_num]['tiles'][9][0] == None:
                 reward += 0.5
-
+            if obs["hour"] == 2:
+                reward += 0.1 * obs["farms"][player_num]["hires_today"]
 
                 # print("SECOND QUADRANT HAS BEEN UNLOCKED")
             # # penalizes for third farms unlock
@@ -168,26 +169,26 @@ class KaggleEnvWrapper(gym.Env):
                 for x in range(10):
                     tile = obs['farms'][player_num]['tiles'][y][x]
                     past_tile = self.past_obs['farms'][player_num]['tiles'][y][x]
-                    if (["BUILD_PASTURE"], [x, y]) in combined_ffa_w_pos or (["BUILD_COOP"], [x, y]) in combined_ffa_w_pos:
-                        # print("placed?")
-                        if past_tile == None and np.linalg.norm(np.array([x, y]) - (4,4)) < 3:
-                        # NEED TO ADD POSITION OF ALL COMBINED FARMER HAND AND LINK WHICH ONES TO WHICH
-                            # print("COOP/PASTURE HAS BEEN PLACED")
-                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
+                    # if (["BUILD_PASTURE"], [x, y]) in combined_ffa_w_pos or (["BUILD_COOP"], [x, y]) in combined_ffa_w_pos:
+                    #     # print("placed?")
+                    #     if past_tile == None and np.linalg.norm(np.array([x, y]) - (4,4)) < 3:
+                    #     # NEED TO ADD POSITION OF ALL COMBINED FARMER HAND AND LINK WHICH ONES TO WHICH
+                    #         # print("COOP/PASTURE HAS BEEN PLACED")
+                    #         reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
                     if isinstance(past_tile, dict):
                         if past_tile.get("kind") in ("COOP", "PASTURE") and past_tile.get("animal") is None:
                             if (["PLACE", "COW"], [x, y]) in combined_ffa_w_pos or (["PLACE", "GOOSE"], [x, y]) in combined_ffa_w_pos or (["PLACE", "SHEEP"], [x, y]) in combined_ffa_w_pos:
                                 reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4))))) * 2
-                    elif past_tile is None and (["PLANT"], [x, y]) in combined_ffa_w_pos:
-                        if np.linalg.norm(np.array([x, y]) - (4,4)) >= 3:
-                            # print("PLANT HAS BEEN PLANTED OUTSIDE OF RADIUS 3")
-                            reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
+                    # elif past_tile is None and (["PLANT"], [x, y]) in combined_ffa_w_pos:
+                        # if np.linalg.norm(np.array([x, y]) - (4,4)) >= 3:
+                        #     # print("PLANT HAS BEEN PLANTED OUTSIDE OF RADIUS 3")
+                        #     reward += (1/(1+np.pow(1.5, np.linalg.norm(np.array([x, y]) - (4,4)))))
 
                     if type(past_tile) == dict:
-                        if past_tile["kind"] == "WEED" and (["DIG"], [x, y]) in combined_ffa_w_pos:
-                            # print("WEED HAS BEEN DUG")
-                            reward += 0.5
-                        elif past_tile["kind"] == "PLANT" and past_tile['watered_today'] == False and (["WATER"], [x, y]) in combined_ffa_w_pos:
+                        # if past_tile["kind"] == "WEED" and (["DIG"], [x, y]) in combined_ffa_w_pos:
+                        #     # print("WEED HAS BEEN DUG")
+                        #     reward += 0.5
+                        if past_tile["kind"] == "PLANT" and past_tile['watered_today'] == False and (["WATER"], [x, y]) in combined_ffa_w_pos:
                             # print("PLANT HAS BEEN WATERED")
                             reward += 1
                         elif "PLANT" == past_tile["kind"] and (past_tile['fertilized_until_day'] - obs['day']) == 0 and (["FERTILIZE"], [x, y]) in combined_ffa_w_pos:
