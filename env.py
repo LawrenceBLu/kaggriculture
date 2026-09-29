@@ -83,7 +83,7 @@ class KaggleEnvWrapper(gym.Env):
             
         else:
             # rewards for first farms unlock
-            reward += max(0, (obs["farms"][player_num]["money"] - self.past_obs["farms"][player_num]["money"])/100)
+            reward += min(2, max(0, (obs["farms"][player_num]["money"] - self.past_obs["farms"][player_num]["money"])/100))
             if obs["day"] >= 7 and self.past_obs['farms'][player_num]['tiles'][0][9] == 'LOCKED' and obs['farms'][player_num]['tiles'][0][9] == None:
                 # print("FIRST QUADRANT HAS BEEN UNLOCKED")
                 reward += 0.5
@@ -189,7 +189,7 @@ class KaggleEnvWrapper(gym.Env):
                             reward += 0.5
                         elif past_tile["kind"] == "PLANT" and past_tile['watered_today'] == False and (["WATER"], [x, y]) in combined_ffa_w_pos:
                             # print("PLANT HAS BEEN WATERED")
-                            reward += 0.8
+                            reward += 1
                         elif "PLANT" == past_tile["kind"] and (past_tile['fertilized_until_day'] - obs['day']) == 0 and (["FERTILIZE"], [x, y]) in combined_ffa_w_pos:
                             reward += 0.3
                         #elif "PLANT" == past_tile["kind"]:
@@ -218,7 +218,7 @@ class KaggleEnvWrapper(gym.Env):
                         
                         elif "animal" in past_tile.keys() and past_tile['fed_today'] == False and (["FEED"], [x, y]) in combined_ffa_w_pos:
                             # print("ANIMAL HAS BEEN FED")
-                            reward += 0.8
+                            reward += 1
                         elif "animal" in past_tile.keys() and past_tile['cared_today'] == False and (["CARE"], [x, y]) in combined_ffa_w_pos:
                             # print("ANIMAL HAS BEEN CARED FOR")
                             reward += 0.3
