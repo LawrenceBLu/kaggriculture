@@ -205,13 +205,13 @@ class KaggleEnvWrapper(gym.Env):
                             if past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_crops'][self.dict_of_lists['list_of_all_crops'][past_tile['crop']]] == 1:
                                 reward += 1
 
-                        elif past_tile["kind"] == "PLANT" and tile["kind"] == "WEED":
+                        elif isinstance(tile, dict) and past_tile["kind"] == "PLANT" and tile["kind"] == "WEED":
                             reward -= 1
                                 
                         # CHECK IF THIS IS CORRECT
                         # elif "PLANT" == past_tile["kind"] and past_tile['consecutive_unwatered'] >= 1:
                         #     reward -= 0.5
-                        elif "animal" in past_tile.keys() and tile.get("animal") is None:
+                        elif isinstance(tile, dict) and "animal" in past_tile.keys() and tile.get("animal") is None:
                             reward -= 1
                         elif "animal" in past_tile.keys() and (["HARVEST"], [x, y])  in combined_ffa_w_pos and past_tile['yield_units']/self.dict_of_lists['list_of_max_yield_animals'][self.dict_of_lists['list_of_all_animals'][past_tile['animal']]] > 0.5:
                             reward += 0.5
