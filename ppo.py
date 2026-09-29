@@ -79,7 +79,7 @@ class ReplayBuffer():
     for chunk_idx in range(0, len(chunks), batch_size):
       batch_chunks = chunks[chunk_idx:chunk_idx + batch_size]
 
-      old_grid = torch.stack([torch.from_numpy(np.array(g)).to(dtype=torch.float32) for g in self.grids], dim=0)
+      old_grid = torch.stack([torch.from_numpy(g).to(dtype=torch.float32) for g in self.grids], dim=0)
       old_non_tiles = torch.stack([torch.as_tensor(non_tile, dtype=torch.float32) for non_tile in self.non_tiles], dim=0)
       old_farm_actions = torch.stack([torch.as_tensor(farm_action) for farm_action in self.farm_actions], dim=0)
       old_market_actions = torch.stack([torch.as_tensor(market_action) for market_action in self.market_actions], dim=0)
@@ -109,8 +109,8 @@ class ReplayBuffer():
 
   def compute_gae(self, next_value, next_done, gae_lambda, gamma):
     '''
-    gae_lambda: future discount
-    gamma: smoothing parameter
+    gae_lambda: smoothing parameter
+    gamma: future discount
     '''
     # (T, num_envs) numeric numpy array of state values
     values = torch.stack(self.state_values, dim=0).detach().cpu().numpy()
@@ -294,7 +294,7 @@ class PPO():
       with torch.no_grad():
         grid, non_tiles = self.process_obs(self.last_obs)
         farm_mask, market_mask = self.create_masks()
-        grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=self.device)
+        grid = torch.from_numpy(grid).to(dtype=torch.float32, device=self.device)
         non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
         ep_starts = torch.tensor(self.last_ep_starts, dtype=torch.float32, device=self.device)
 
@@ -336,7 +336,7 @@ class PPO():
 
     with torch.no_grad():
       grid, non_tiles = self.process_obs(new_state)
-      grid = torch.from_numpy(np.array(grid)).to(dtype=torch.float32, device=self.device)
+      grid = torch.from_numpy(grid).to(dtype=torch.float32, device=self.device)
       non_tiles = torch.tensor(non_tiles, dtype=torch.float32, device=self.device)
       ep_starts = torch.from_numpy(np.array([done])).to(dtype=torch.float32, device=self.device)
       state_value = self.model.predict_value(grid, non_tiles, lstm_hidden, ep_starts)

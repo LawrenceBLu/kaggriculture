@@ -9,13 +9,13 @@ from kaggyculture import invalid_action, setup_non_tile_observation, setup_tile_
 from action_space import farmhand_action_space, market_action_space
 from models import ActorCritic
 
-grid_size = 31
+grid_size = 32
 cnn_dim = 256
-non_tile_len = 97
+non_tile_len = 105
 non_tile_dim = 64
 linear_dim = 256
 lstm_dim = 256
-lstm_layers = 1
+lstm_layers = 2
 farm_action_dim = len(farmhand_action_space())
 num_hands = 5
 market_action_dim = len(market_action_space())
@@ -29,7 +29,7 @@ epochs = 3
 value_c = 0.5
 entr_c = 0.01
 gae_lambda = 0.99
-gamma = 0.95
+gamma = 0.999
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
