@@ -311,7 +311,7 @@ def invalid_action(obs, action, farmhand_index=None):
         ### list_of_original_market_prices_crops_sell[action[2]]
         if money - (list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * num) < global_vars.MIN_MONEY: return invalid
         # if money < list_of_original_market_prices_crops_buy[list_of_all_crops.index(item)] * action[2]: return invalid
-
+        if obs["day"] >= 28: return invalid
 
     if type_action == "BUY_PRODUCT":
         # should not have to exist
@@ -319,6 +319,7 @@ def invalid_action(obs, action, farmhand_index=None):
         # if num <= 0: return invalid
         # if item not in ["WHEAT", "FERTILIZER"]: return invalid
         if money - (obs['market']['prices'][item] * num) < global_vars.MIN_MONEY: return invalid
+        if obs["day"] >= 28: return invalid
 
     if type_action == "BUY_ANIMAL":
         # should not have to exist
@@ -326,7 +327,8 @@ def invalid_action(obs, action, farmhand_index=None):
         # if num <= 0: return invalid
         # if item not in list_of_all_animals: return invalid
         if money - (list_of_original_market_prices_animals_buy[list_of_all_animals.index(item)] * num) < global_vars.MIN_MONEY: return invalid
-
+        if obs["day"] >= 28: return invalid
+        
     if type_action == "SELL":
         # should not have to exist
         # if len(action) < 3: return invalid
