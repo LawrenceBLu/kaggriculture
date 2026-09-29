@@ -83,7 +83,7 @@ class KaggleEnvWrapper(gym.Env):
             
         else:
             # rewards for first farms unlock
-            reward += min(1, max(0, (obs["farms"][player_num]["money"] - self.past_obs["farms"][player_num]["money"])/100))
+            reward += max(0, (obs["farms"][player_num]["money"] - self.past_obs["farms"][player_num]["money"])/100)
             if obs["day"] >= 7 and self.past_obs['farms'][player_num]['tiles'][0][9] == 'LOCKED' and obs['farms'][player_num]['tiles'][0][9] == None:
                 # print("FIRST QUADRANT HAS BEEN UNLOCKED")
                 reward += 0.5
