@@ -239,6 +239,7 @@ def invalid_action(obs, action, farmhand_index=None):
         #   if item not in list_of_all_crops: return invalid
         if tile is not None: return invalid
         if obs['private']['seeds'].get(item, 0) == 0: return invalid
+        if obs["hour"] >= 23: return invalid 
 
     if type_action == "WATER":
         if not isinstance(tile, dict): return invalid
